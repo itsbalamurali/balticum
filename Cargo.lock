@@ -72,6 +72,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "baltic-id"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "hex",
+ "openssl",
+ "rand",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "strum",
+ "thiserror",
+ "x509-parser",
+]
+
+[[package]]
 name = "base64"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -977,25 +996,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6528351c9bc8ab22353f9d776db39a20288e8d6c37ef8cfe3317cf875eecfc2d"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "smart-id-rs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "hex",
- "openssl",
- "rand",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "strum",
- "thiserror",
- "x509-parser",
 ]
 
 [[package]]
