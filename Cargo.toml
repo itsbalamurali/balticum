@@ -1,6 +1,6 @@
 [package]
-name = "smart-id-rs"
-description = "Smart-ID client library for Rust"
+name = "baltic-id"
+description = "Smart-ID & Mobile-ID client library for Rust"
 version = "0.1.0"
 edition = "2021"
 
