@@ -839,8 +839,8 @@ pub enum SessionStatusCode {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionStatusRequest {
     pub session_id: String,
-    session_status_response_socket_timeout_ms: u64,
-    network_interface: String,
+    pub session_status_response_socket_timeout_ms: u64,
+    pub network_interface: String,
 }
 
 impl SessionStatusRequest {
