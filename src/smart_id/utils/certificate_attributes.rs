@@ -17,10 +17,7 @@ impl CertificateAttributes {
         Some(datetime)
     }
 
-    pub fn get_date_of_birth_from_certificate_field(
-        &self,
-        cert_as_string: &str,
-    ) -> Option<String> {
+    pub fn get_date_of_birth_from_certificate_field(&self, cert_as_string: &str) -> Option<String> {
         let cert = match parse_x509_certificate(cert_as_string.as_bytes()) {
             Ok((_, cert)) => cert,
             Err(_) => return None,
@@ -29,7 +26,7 @@ impl CertificateAttributes {
         for entry in cert.tbs_certificate.extensions() {
             // OID for date of birth
             if entry.oid.to_string() == "1.3.6.1.5.5.7.9.1".to_string() {
-                        return Some(String::from_utf8_lossy(entry.value).parse().unwrap());
+                return Some(String::from_utf8_lossy(entry.value).parse().unwrap());
             }
         }
         None

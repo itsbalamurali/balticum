@@ -1,22 +1,25 @@
-use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
 use crate::smart_id::exceptions::Exception;
 use crate::smart_id::exceptions::Exception::UnprocessableSmartIdResponseException;
 use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
+use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
 
 pub struct NationalIdentityNumber;
-
 
 impl NationalIdentityNumber {
     pub fn new() -> NationalIdentityNumber {
         NationalIdentityNumber {}
     }
-    
+
     pub fn get_date_of_birth(
         &self,
         authentication_identity: &AuthenticationIdentity,
-    ) -> Result<Option<DateTime<Utc>>,Exception> {
+    ) -> Result<Option<DateTime<Utc>>, Exception> {
         let identity_number = authentication_identity.get_identity_code();
-        match authentication_identity.get_country().to_uppercase().as_str() {
+        match authentication_identity
+            .get_country()
+            .to_uppercase()
+            .as_str()
+        {
             "EE" | "LT" => self.parse_ee_lt_date_of_birth(identity_number),
             "LV" => self.parse_lv_date_of_birth(identity_number),
             _ => Err(UnprocessableSmartIdResponseException(format!(
@@ -42,15 +45,17 @@ impl NationalIdentityNumber {
                     "Invalid personal code {}",
                     ee_or_lt_national_identity_number
                 )))
-            },
+            }
         };
 
         let date = NaiveDate::from_ymd_opt(
             birth_year_four_digit.parse::<i32>().unwrap(),
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
-        ).unwrap();
-        let datetime = Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0,0,0).unwrap()));
+        )
+        .unwrap();
+        let datetime =
+            Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))
     }
 
@@ -75,15 +80,17 @@ impl NationalIdentityNumber {
                     "Invalid personal code: {}",
                     lv_national_identity_number
                 )))
-            },
+            }
         };
 
         let date = NaiveDate::from_ymd_opt(
             birth_year_four_digit.parse::<i32>().unwrap(),
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
-        ).unwrap();
-        let datetime = Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0,0,0).unwrap()));
+        )
+        .unwrap();
+        let datetime =
+            Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))
     }
 }

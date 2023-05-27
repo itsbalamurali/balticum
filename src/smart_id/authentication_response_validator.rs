@@ -1,29 +1,24 @@
-use std::{
-    fs::{
-        read_dir
-    },
-    time::SystemTime
-};
-use anyhow::anyhow;
-use chrono::{DateTime, Local, Utc};
-use openssl::{
-    x509::{
-        X509,
-        X509StoreContext,
-        store::{X509StoreBuilder},
-        verify::X509VerifyFlags
-    },
-    stack::Stack,
-    hash::MessageDigest,
-    sign::Verifier,
-    pkey::PKey,
-    error::ErrorStack,
-};
 use crate::smart_id::certificate_level::CertificateLevel;
 use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
-use crate::smart_id::models::{AuthenticationCertificate, CertificateParser, SessionEndResultCode, SmartIdAuthenticationResponse, SmartIdAuthenticationResult, SmartIdAuthenticationResultError};
+use crate::smart_id::models::{
+     CertificateParser, SessionEndResultCode,
+    SmartIdAuthenticationResponse, SmartIdAuthenticationResult, SmartIdAuthenticationResultError,
+};
 use crate::smart_id::utils::certificate_attributes::CertificateAttributes;
 use crate::smart_id::utils::national_identity_number::NationalIdentityNumber;
+use anyhow::anyhow;
+use chrono::{DateTime, Utc};
+use openssl::{
+    error::ErrorStack,
+    hash::MessageDigest,
+    pkey::PKey,
+    sign::Verifier,
+    stack::Stack,
+    x509::{store::X509StoreBuilder, verify::X509VerifyFlags, X509StoreContext, X509},
+};
+use std::{fs::read_dir};
+use x509_parser::der_parser::{oid};
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 pub struct AuthenticationResponseValidator {
     trusted_ca_certificates: Vec<String>,
@@ -36,17 +31,27 @@ impl AuthenticationResponseValidator {
             None => format!("{}/../../../resources", env!("CARGO_MANIFEST_DIR")),
         };
 
-        let trusted_ca_certificates = Self::initialize_trusted_ca_certificates_from_resources(&resources_location)?;
+        let trusted_ca_certificates =
+            Self::initialize_trusted_ca_certificates_from_resources(&resources_location)?;
         Ok(Self {
             trusted_ca_certificates,
         })
     }
 
-    pub fn validate(&self, authentication_response: &SmartIdAuthenticationResponse) -> Result<SmartIdAuthenticationResult, ErrorStack> {
-        self.validate_authentication_response(authentication_response).unwrap();
+    pub fn validate(
+        &self,
+        authentication_response: &SmartIdAuthenticationResponse,
+    ) -> Result<SmartIdAuthenticationResult, ErrorStack> {
+        self.validate_authentication_response(authentication_response)
+            .unwrap();
+
+        let (_,certificate) = X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
 
         let mut authentication_result = SmartIdAuthenticationResult::new();
-        let identity = self.construct_authentication_identity(&authentication_response.certificate_instance, &authentication_response.certificate)?;
+        let identity = self.construct_authentication_identity(
+            &certificate,
+            &authentication_response.certificate,
+        )?;
         authentication_result.set_authentication_identity(identity);
 
         if !self.verify_response_end_result(authentication_response) {
@@ -55,87 +60,129 @@ impl AuthenticationResponseValidator {
         }
         if !self.verify_signature(authentication_response)? {
             authentication_result.set_valid(false);
-            authentication_result.add_error(SmartIdAuthenticationResultError::SignatureVerificationFailure);
+            authentication_result
+                .add_error(SmartIdAuthenticationResultError::SignatureVerificationFailure);
         }
-        if !self.verify_certificate_expiry(&authentication_response.certificate_instance)? {
+        if !self.verify_certificate_expiry(&certificate) {
             authentication_result.set_valid(false);
             authentication_result.add_error(SmartIdAuthenticationResultError::CertificateExpired);
         }
-        if !self.is_certificate_trusted(&authentication_response.certificate)? {
+        if !self.is_certificate_trusted(authentication_response.to_owned().certificate)? {
             authentication_result.set_valid(false);
-            authentication_result.add_error(SmartIdAuthenticationResultError::CertificateNotTrusted);
+            authentication_result
+                .add_error(SmartIdAuthenticationResultError::CertificateNotTrusted);
         }
         if !self.verify_certificate_level(authentication_response) {
             authentication_result.set_valid(false);
-            authentication_result.add_error(SmartIdAuthenticationResultError::CertificateLevelMismatch);
+            authentication_result
+                .add_error(SmartIdAuthenticationResultError::CertificateLevelMismatch);
         }
 
         Ok(authentication_result)
     }
 
-    fn validate_authentication_response(&self, authentication_response: &SmartIdAuthenticationResponse) -> Result<(), anyhow::Error> {
+    fn validate_authentication_response(
+        &self,
+        authentication_response: &SmartIdAuthenticationResponse,
+    ) -> Result<(), anyhow::Error> {
         if authentication_response.certificate.is_empty() {
-            return Err(anyhow!("Certificate is not present in the authentication response"));
+            return Err(anyhow!(
+                "Certificate is not present in the authentication response"
+            ));
         }
         if authentication_response.value_in_base64.is_empty() {
-            return Err(anyhow!("Signature is not present in the authentication response"));
+            return Err(anyhow!(
+                "Signature is not present in the authentication response"
+            ));
         }
         if authentication_response.signed_data.is_empty() {
-            return Err(anyhow!("Signable data is not present in the authentication response"));
+            return Err(anyhow!(
+                "Signable data is not present in the authentication response"
+            ));
         }
         Ok(())
     }
 
-    fn verify_response_end_result(&self, authentication_response: &SmartIdAuthenticationResponse) -> bool {
+    fn verify_response_end_result(
+        &self,
+        authentication_response: &SmartIdAuthenticationResponse,
+    ) -> bool {
         authentication_response.end_result == SessionEndResultCode::OK
     }
 
-    fn verify_signature(&self, authentication_response: &SmartIdAuthenticationResponse) -> Result<bool, ErrorStack> {
-        let prepared_certificate = CertificateParser::get_pem_certificate(&authentication_response.certificate).unwrap();
-        let signature = authentication_response.value.clone();
-        let public_key = PKey::public_key_from_pem(prepared_certificate.as_bytes())?;
-
-        let mut verifier = Verifier::new(MessageDigest::sha512(), &public_key)?;
-        verifier.update(authentication_response.signed_data.as_bytes())?;
-        Ok(verifier.verify(signature.as_bytes())?)
+    fn verify_signature(
+        &self,
+        authentication_response: &SmartIdAuthenticationResponse,
+    ) -> Result<bool, ErrorStack> {
+        let prepared_certificate =
+            CertificateParser::get_der_certificate(authentication_response.certificate.clone()).unwrap();
+        let signature = authentication_response.get_value().unwrap();
+        let public_key = PKey::public_key_from_pem(prepared_certificate.as_slice()).unwrap();
+        let mut verifier = Verifier::new(MessageDigest::sha512(), &public_key).unwrap();
+        verifier.update(authentication_response.signed_data.as_bytes()).unwrap();
+        Ok(verifier.verify(signature.as_slice()).unwrap())
     }
 
-    fn verify_certificate_expiry(&self, authentication_certificate: &AuthenticationCertificate) -> Result<bool, ErrorStack> {
-        let valid_to = &authentication_certificate.valid_to;
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        Ok(valid_to > &now.as_secs())
+    fn verify_certificate_expiry(
+        &self,
+        authentication_certificate: &X509Certificate<'_>,
+    ) -> bool {
+        let valid_to = authentication_certificate.validity.not_after.timestamp();
+        let now = Utc::now().timestamp();
+        valid_to > now
     }
 
-    fn verify_certificate_level(&self, authentication_response: &SmartIdAuthenticationResponse) -> bool {
-        let cert_level = CertificateLevel::new(&authentication_response.certificate_level);
-        let requested_certificate_level = &authentication_response.requested_certificate_level.unwrap();
-        requested_certificate_level.is_empty() || cert_level.is_equal_or_above(requested_certificate_level)
+    fn verify_certificate_level(
+        &self,
+        authentication_response: &SmartIdAuthenticationResponse,
+    ) -> bool {
+        let cert_level = CertificateLevel::new(&authentication_response.to_owned().certificate_level);
+        let requested_certificate_level =
+            &authentication_response.requested_certificate_level.as_ref().unwrap();
+        requested_certificate_level.is_empty() || cert_level.is_equal_or_above(requested_certificate_level.as_str())
     }
 
-    fn construct_authentication_identity(&self, certificate: &AuthenticationCertificate, x509_certificate: &str) -> Result<AuthenticationIdentity, ErrorStack> {
+    fn construct_authentication_identity(
+        &self,
+        certificate: &X509Certificate<'_>,
+        x509_certificate: &str,
+    ) -> Result<AuthenticationIdentity, ErrorStack> {
         let mut identity = AuthenticationIdentity::new();
         identity.set_auth_certificate(x509_certificate.to_owned());
+        let tbs_certificate = &certificate.tbs_certificate;
+        let subject = &tbs_certificate.subject;
 
-        let subject = &certificate.subject;
-        let given_name = subject.gn.clone();
-            identity.set_given_name(given_name);
-        let surname = subject.sn.clone();
-            identity.set_sur_name(surname);
+        // Extract the given name
+        if let Some(given_name) = subject.iter_by_oid(&oid!(2.5.4.42)).next() {
+            identity.set_given_name(String::from_utf8_lossy(given_name.attr_value().data).to_string());
+        }
 
-        let serial_number = subject.serial_number.clone();
-            identity.set_identity_code(serial_number.clone());
-            let identity_number = serial_number.splitn(2, '-').nth(1).unwrap();
-            identity.set_identity_number(identity_number.to_owned());
+        // Extract the surname
+        if let Some(surname) = subject.iter_by_oid(&oid!(2.5.4.4)).next() {
+            identity.set_sur_name(String::from_utf8_lossy(surname.attr_value().data).to_string());
+        }
 
-        let country = subject.c.clone();
-            identity.set_country(country);
+        // Extract the identity code
+        if let Some(identity_code) = subject.iter_by_oid(&oid!(2.5.4.5)).next() {
+            let identity_code = String::from_utf8_lossy(identity_code.attr_value().data).to_string();
+            identity.set_identity_code(identity_code.to_owned());
+            let identity_number = identity_code.splitn(2, '-').nth(1);
+            identity.set_identity_number(identity_number.unwrap().to_string());
+        }
+
+        // Extract the country
+        if let Some(country) = subject.iter_country().next() {
+            identity.set_country(String::from_utf8_lossy(country.attr_value().data).to_string());
+        }
 
         identity.set_date_of_birth(Self::get_date_of_birth(&identity)?);
 
         Ok(identity)
     }
 
-    fn initialize_trusted_ca_certificates_from_resources(resources_location: &str) -> Result<Vec<String>, ErrorStack> {
+    fn initialize_trusted_ca_certificates_from_resources(
+        resources_location: &str,
+    ) -> Result<Vec<String>, ErrorStack> {
         let mut trusted_ca_certificates = Vec::new();
         let trusted_certificates_directory = format!("{}/trusted_certificates", resources_location);
         for entry in read_dir(trusted_certificates_directory).unwrap() {
@@ -150,9 +197,9 @@ impl AuthenticationResponseValidator {
         Ok(trusted_ca_certificates)
     }
 
-    fn is_certificate_trusted(&self, certificate: &str) -> Result<bool, ErrorStack> {
-        let certificate_as_pem = CertificateParser::get_pem_certificate(certificate).unwrap();
-        let x509 = X509::from_pem(certificate_as_pem.as_bytes()).unwrap();
+    fn is_certificate_trusted(&self, certificate: String) -> Result<bool, ErrorStack> {
+        let certificate_as_pem = CertificateParser::get_der_certificate(certificate).unwrap();
+        let x509 = X509::from_pem(certificate_as_pem.as_slice()).unwrap();
         let mut store = X509StoreBuilder::new().unwrap();
         for ca_certificate in &self.trusted_ca_certificates {
             let ca_certificate_pem = std::fs::read_to_string(ca_certificate).unwrap();
@@ -161,19 +208,26 @@ impl AuthenticationResponseValidator {
         }
         store.set_flags(X509VerifyFlags::PARTIAL_CHAIN)?;
         let mut store_ctx = X509StoreContext::new()?;
-        store_ctx.init(&store.build(), &x509, &Stack::new().unwrap(),|c| c.verify_cert())?;
+        store_ctx.init(&store.build(), &x509, &Stack::new().unwrap(), |c| {
+            c.verify_cert()
+        })?;
         Ok(store_ctx.verify_cert()?)
     }
 
-    fn get_date_of_birth(identity: &AuthenticationIdentity) -> Result<Option<DateTime<Utc>>, ErrorStack> {
+    fn get_date_of_birth(
+        identity: &AuthenticationIdentity,
+    ) -> Result<Option<DateTime<Utc>>, ErrorStack> {
         let certificate_attribute_util = CertificateAttributes::new();
-        let date_of_birth_from_certificate_field = certificate_attribute_util.get_date_of_birth_certificate_attribute(&identity.auth_certificate);
+        let date_of_birth_from_certificate_field = certificate_attribute_util
+            .get_date_of_birth_certificate_attribute(&identity.auth_certificate);
         if let Some(date_of_birth) = date_of_birth_from_certificate_field {
             return Ok(Some(date_of_birth));
         }
 
         let national_identity_number_util = NationalIdentityNumber::new();
-        let date_of_birth = national_identity_number_util.get_date_of_birth(&identity).unwrap();
+        let date_of_birth = national_identity_number_util
+            .get_date_of_birth(&identity)
+            .unwrap();
         Ok(date_of_birth)
     }
 }

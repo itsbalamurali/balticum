@@ -1,4 +1,3 @@
-
 pub struct AuthenticationIdentity {
     pub given_name: String,
     pub sur_name: String,
@@ -67,7 +66,10 @@ impl AuthenticationIdentity {
         &self.country
     }
 
-    pub fn set_auth_certificate(&mut self, auth_certificate: String) -> &mut AuthenticationIdentity {
+    pub fn set_auth_certificate(
+        &mut self,
+        auth_certificate: String,
+    ) -> &mut AuthenticationIdentity {
         self.auth_certificate = auth_certificate;
         self
     }
@@ -76,7 +78,10 @@ impl AuthenticationIdentity {
         &self.auth_certificate
     }
 
-    pub fn set_date_of_birth(&mut self, date_of_birth: Option<chrono::DateTime<chrono::Utc>>) -> &mut AuthenticationIdentity {
+    pub fn set_date_of_birth(
+        &mut self,
+        date_of_birth: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> &mut AuthenticationIdentity {
         self.date_of_birth = date_of_birth;
         self
     }

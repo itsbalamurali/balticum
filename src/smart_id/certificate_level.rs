@@ -24,7 +24,7 @@ impl CertificateLevel {
     }
 }
 
-#[derive(Display,Copy, Clone,EnumString,PartialEq)]
+#[derive(Display, Copy, Clone, EnumString, PartialEq)]
 enum CertificateLevelCode {
     ADVANCED,
     QUALIFIED,

@@ -1,21 +1,30 @@
 use crate::smart_id::exceptions::Exception;
-use crate::smart_id::exceptions::Exception::{DocumentUnusableException, RequiredInteractionNotSupportedByAppException, SessionTimeoutException, TechnicalErrorException, UserRefusedCertChoiceException, UserRefusedConfirmationMessageException, UserRefusedConfirmationMessageWithVcChoiceException, UserRefusedDisplayTextAndPinException, UserRefusedException, UserRefusedVcChoiceException};
-use crate::smart_id::models::{AuthenticationHash, SessionEndResultCode, SessionStatus, SessionStatusCode, SessionStatusRequest, SignableData, SmartIdAuthenticationResponse};
+use crate::smart_id::exceptions::Exception::{
+    DocumentUnusableException, RequiredInteractionNotSupportedByAppException,
+    SessionTimeoutException, TechnicalErrorException, UserRefusedCertChoiceException,
+    UserRefusedConfirmationMessageException, UserRefusedConfirmationMessageWithVcChoiceException,
+    UserRefusedDisplayTextAndPinException, UserRefusedException, UserRefusedVcChoiceException,
+};
+use crate::smart_id::models::{
+    AuthenticationHash, SessionEndResultCode, SessionStatus, SessionStatusCode,
+    SessionStatusRequest, SignableData, SmartIdAuthenticationResponse,
+};
 use crate::smart_id::smart_id_rest_connector::SmartIdRestConnector;
 
 pub struct SessionStatusFetcher<'a> {
-    session_id: String,
-    connector: &'a SmartIdRestConnector<'a>,
-    data_to_sign: Option<&'a SignableData>,
-    authentication_hash: Option<&'a AuthenticationHash>,
-    session_status_response_socket_timeout_ms: u64,
-    network_interface: Option<String>,
+    pub session_id: String,
+    connector: SmartIdRestConnector<'a>,
+    pub data_to_sign: Option<&'a SignableData>,
+    pub authentication_hash: Option<&'a AuthenticationHash>,
+    pub session_status_response_socket_timeout_ms: u64,
+    pub network_interface: Option<String>,
 }
 
-impl SessionStatusFetcher<'_> {
-    pub fn new(connector: &SmartIdRestConnector) -> Self {
+impl<'a> SessionStatusFetcher<'a> {
+    pub fn new(endpoint_url: String,session_id: String) -> SessionStatusFetcher<'a> {
+        let connector = SmartIdRestConnector::new(endpoint_url);
         SessionStatusFetcher {
-            session_id: String::new(),
+            session_id: session_id,
             connector,
             data_to_sign: None,
             authentication_hash: None,
@@ -41,16 +50,6 @@ impl SessionStatusFetcher<'_> {
         } else {
             ""
         }
-    }
-
-    pub fn set_data_to_sign(mut self, data_to_sign: &SignableData) -> Self {
-        self.data_to_sign = Some(data_to_sign);
-        self
-    }
-
-    pub fn set_authentication_hash(mut self, authentication_hash: &AuthenticationHash) -> Self {
-        self.authentication_hash = Some(authentication_hash);
-        self
     }
 
     pub fn set_session_status_response_socket_timeout_ms(
@@ -91,8 +90,8 @@ impl SessionStatusFetcher<'_> {
 
     fn create_session_status_request(&self, session_id: String) -> SessionStatusRequest {
         let mut request = SessionStatusRequest::new(session_id);
-         let timeout = self.session_status_response_socket_timeout_ms;
-            request.set_session_status_response_socket_timeout_ms(timeout);
+        let timeout = self.session_status_response_socket_timeout_ms;
+        request.set_session_status_response_socket_timeout_ms(timeout);
         if let Some(interface) = &self.network_interface {
             request.set_network_interface(interface.clone());
         }
@@ -121,31 +120,31 @@ impl SessionStatusFetcher<'_> {
         let end_result = result.unwrap().get_end_result();
         match end_result {
             SessionEndResultCode::USER_REFUSED => {
-                panic!("{}",UserRefusedException);
+                panic!("{}", UserRefusedException);
             }
             SessionEndResultCode::TIMEOUT => {
-                panic!("{}",SessionTimeoutException);
+                panic!("{}", SessionTimeoutException);
             }
             SessionEndResultCode::DOCUMENT_UNUSABLE => {
-                panic!("{}",DocumentUnusableException);
+                panic!("{}", DocumentUnusableException);
             }
             SessionEndResultCode::REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP => {
-                panic!("{}",RequiredInteractionNotSupportedByAppException);
+                panic!("{}", RequiredInteractionNotSupportedByAppException);
             }
             SessionEndResultCode::USER_REFUSED_DISPLAYTEXTANDPIN => {
-                panic!("{}",UserRefusedDisplayTextAndPinException);
+                panic!("{}", UserRefusedDisplayTextAndPinException);
             }
             SessionEndResultCode::USER_REFUSED_VC_CHOICE => {
-                panic!("{}",UserRefusedVcChoiceException);
+                panic!("{}", UserRefusedVcChoiceException);
             }
             SessionEndResultCode::USER_REFUSED_CONFIRMATIONMESSAGE => {
-                panic!("{}",UserRefusedConfirmationMessageException);
+                panic!("{}", UserRefusedConfirmationMessageException);
             }
             SessionEndResultCode::USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE => {
-                panic!("{}",UserRefusedConfirmationMessageWithVcChoiceException);
+                panic!("{}", UserRefusedConfirmationMessageWithVcChoiceException);
             }
             SessionEndResultCode::USER_REFUSED_CERT_CHOICE => {
-                panic!("{}",UserRefusedCertChoiceException);
+                panic!("{}", UserRefusedCertChoiceException);
             }
             SessionEndResultCode::OK => {}
             _ => panic!("Session status end result is '{}'", end_result),
@@ -163,27 +162,27 @@ impl SessionStatusFetcher<'_> {
         let mut authentication_response = SmartIdAuthenticationResponse::new();
         authentication_response.set_end_result(session_result.get_end_result());
         authentication_response.set_signed_data(self.get_data_to_sign().to_string());
-        authentication_response.set_value_in_base64(session_signature.get_value());
-        authentication_response.set_algorithm_name(session_signature.get_algorithm());
+        authentication_response.set_value_in_base64(session_signature.get_value().unwrap());
+        authentication_response.set_algorithm_name(session_signature.get_algorithm().unwrap());
         authentication_response.set_certificate(session_certificate.get_value().unwrap());
-        authentication_response.set_certificate_level(session_certificate.get_certificate_level());
+        authentication_response.set_certificate_level(session_certificate.get_certificate_level().unwrap());
         authentication_response.set_state(session_status.get_state());
         authentication_response
     }
 }
 
-
 pub struct SessionStatusFetcherBuilder<'a> {
     session_id: Option<String>,
-    connector: &'a SmartIdRestConnector<'a>,
+    connector: SmartIdRestConnector<'a>,
     data_to_sign: Option<SignableData>,
     authentication_hash: Option<AuthenticationHash>,
     session_status_response_socket_timeout_ms: u64,
     network_interface: Option<String>,
 }
 
-impl SessionStatusFetcherBuilder<'_> {
-    pub fn new(connector: &SmartIdRestConnector) -> Self {
+impl<'a> SessionStatusFetcherBuilder<'a> {
+    pub fn new(endpoint_url: String) -> SessionStatusFetcherBuilder<'a> {
+        let connector = SmartIdRestConnector::new(endpoint_url);
         SessionStatusFetcherBuilder {
             session_id: None,
             connector,
@@ -194,55 +193,22 @@ impl SessionStatusFetcherBuilder<'_> {
         }
     }
 
-    pub fn with_session_id(mut self, session_id: String) -> Self {
-        self.session_id = Some(session_id);
-        self
-    }
-
-    pub fn with_signable_data(mut self, data_to_sign: SignableData) -> Self {
-        self.data_to_sign = Some(data_to_sign);
-        self
-    }
-
-    pub fn with_authentication_hash(mut self, authentication_hash: AuthenticationHash) -> Self {
-        self.authentication_hash = Some(authentication_hash);
-        self
-    }
 
     pub fn with_session_status_response_socket_timeout_ms(
         mut self,
         session_status_response_socket_timeout_ms: u64,
     ) -> Result<Self, Exception> {
-            if session_status_response_socket_timeout_ms < 0 {
-                return Err(TechnicalErrorException("Timeout cannot be negative".to_string()));
-            }
-
         self.session_status_response_socket_timeout_ms = session_status_response_socket_timeout_ms;
         Ok(self)
     }
 
-    pub fn with_network_interface(mut self, network_interface: String) -> Self {
-        self.network_interface = Some(network_interface);
+    pub fn with_network_interface(mut self, network_interface: &String) -> Self {
+        self.network_interface = Some(network_interface.clone());
         self
     }
 
-    pub async fn get_authentication_response(&self) -> SmartIdAuthenticationResponse {
-        self.build().get_authentication_response().await.clone()
-    }
+    // pub async fn get_authentication_response(&self) -> SmartIdAuthenticationResponse {
+    //     self.build().get_authentication_response().await.clone()
+    // }
 
-    pub fn build(&self) -> SessionStatusFetcher {
-        let mut session_status_fetcher = SessionStatusFetcher::new(&self.connector);
-        session_status_fetcher.set_session_id(self.session_id.unwrap());
-        session_status_fetcher.set_session_status_response_socket_timeout_ms(
-            self.session_status_response_socket_timeout_ms,
-        );
-        session_status_fetcher.set_network_interface(self.network_interface.clone());
-        if let Some(data_to_sign) = &self.data_to_sign {
-            session_status_fetcher.set_data_to_sign(data_to_sign);
-        }
-        if let Some(authentication_hash) = &self.authentication_hash {
-            session_status_fetcher.set_authentication_hash(authentication_hash.clone());
-        }
-        session_status_fetcher
-    }
 }

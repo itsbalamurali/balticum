@@ -1,24 +1,28 @@
-use std::collections::HashMap;
-use hex::ToHex;
-use openssl::base64;
-use openssl::error::ErrorStack;
-use openssl::x509::X509;
-use rand::RngCore;
-use serde_json::Value;
-use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
-use crate::smart_id::models::verification_code_calculator::VerificationCodeCalculator;
-use serde::{Deserialize, Serialize};
-use strum::EnumString;
-use strum::Display;
-use thiserror::Error;
 use crate::smart_id::exceptions::Exception;
 use crate::smart_id::exceptions::Exception::{InvalidParametersException, TechnicalErrorException};
+use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
+use crate::smart_id::models::verification_code_calculator::VerificationCodeCalculator;
+use hex::ToHex;
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::error::Error;
+use anyhow::anyhow;
+use base64::Engine;
+use base64::engine::general_purpose;
+use strum::Display;
+use strum::EnumString;
+use thiserror::Error;
+use x509_parser::{certificate, parse_x509_certificate};
+use x509_parser::nom::AsBytes;
+use x509_parser::prelude::{X509Certificate};
 
 pub mod authentication_identity;
 mod verification_code_calculator;
 
-#[derive(Error,Debug)]
-pub enum SmartIdAuthenticationResultError{
+#[derive(Error, Debug)]
+pub enum SmartIdAuthenticationResultError {
     #[error("Response end result verification failed.")]
     InvalidEndResult,
     #[error("Signature verification failed.")]
@@ -43,9 +47,30 @@ pub enum SmartIdAuthenticationResultError{
 pub struct SmartIdAuthenticationResult {
     pub authentication_identity: Option<AuthenticationIdentity>,
     pub valid: bool,
-    pub errors: Vec<String>,
+    pub errors: Vec<SmartIdAuthenticationResultError>,
 }
 
+impl SmartIdAuthenticationResult {
+    pub fn new() -> Self {
+        Self {
+            authentication_identity: None,
+            valid: true,
+            errors: Vec::new(),
+        }
+    }
+
+    pub fn set_authentication_identity(&mut self, authentication_identity: AuthenticationIdentity) {
+        self.authentication_identity = Some(authentication_identity);
+    }
+
+    pub fn set_valid(&mut self, valid: bool) {
+        self.valid = valid;
+    }
+
+    pub fn add_error(&mut self, error: SmartIdAuthenticationResultError) {
+        self.errors.push(error);
+    }
+}
 
 pub struct AuthenticationCertificate {
     pub name: String,
@@ -66,28 +91,6 @@ pub struct AuthenticationCertificate {
     pub extensions: Option<AuthenticationCertificateExtensions>,
 }
 
-impl AuthenticationCertificate {
-    pub fn new(parsed: X509) -> Self {
-        Self {
-            name: String::new(),
-            subject: parsed.subject_name(),
-            hash: String::new(),
-            issuer: parsed.issuer_name(),
-            version: 0,
-            serial_number: String::new(),
-            serial_number_hex: String::new(),
-            valid_from: String::new(),
-            valid_to: String::new(),
-            valid_from_time_t: 0,
-            valid_to_time_t: 0,
-            signature_type_sn: String::new(),
-            signature_type_ln: String::new(),
-            signature_type_nid: 0,
-            purposes: Vec::new(),
-            extensions: None,
-        }
-    }
-}
 
 
 pub struct AuthenticationCertificateExtensions {
@@ -140,15 +143,13 @@ impl AuthenticationHash {
             hash: String::new(),
             hash_type,
         };
-        authentication_hash.set_hash(authentication_hash.calculate_hash());
+        authentication_hash.set_hash(&authentication_hash.calculate_hash());
         authentication_hash
     }
 
-    fn calculate_hash(&self) -> &str
-    {
-        return DigestCalculator::calculate_digest(&self.data_to_sign, &self.hash_type).as_str();
+    fn calculate_hash(&self) -> String {
+        return DigestCalculator::calculate_digest(&self.data_to_sign, self.hash_type.clone());
     }
-
 
     pub fn generate() -> Self {
         Self::generate_random_hash(HashType::Sha512)
@@ -158,6 +159,10 @@ impl AuthenticationHash {
         let mut random_bytes = vec![0u8; 64];
         rand::thread_rng().fill_bytes(&mut random_bytes);
         random_bytes
+    }
+
+    pub fn get_hash_type(&self) -> HashType {
+        self.hash_type.clone()
     }
 
     pub fn get_data_to_sign(&self) -> &str {
@@ -175,7 +180,51 @@ impl AuthenticationHash {
     pub fn calculate_verification_code(&self) -> String {
         VerificationCodeCalculator::calculate(&self.hash)
     }
+
+    pub fn calculate_hash_in_base64(&self) -> String {
+        let hash = self.calculate_hash();
+        general_purpose::STANDARD
+            .encode(hash.as_bytes())
+    }
 }
+
+
+#[cfg(test)]
+mod authentication_hash_tests {
+    use base64::engine::general_purpose::STANDARD;
+    use super::*;
+
+    #[test]
+    fn generate_random_hash_of_type_sha512() {
+        let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha512);
+        assert_eq!(HashType::Sha512, authentication_hash.get_hash_type());
+        assert_eq!(
+            STANDARD.decode(&authentication_hash.calculate_hash_in_base64()).unwrap(),
+            authentication_hash.get_hash().as_bytes().to_vec()
+        );
+    }
+
+    #[test]
+    fn generate_random_hash_of_type_sha384() {
+        let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha384);
+        assert_eq!(HashType::Sha384, authentication_hash.get_hash_type());
+        assert_eq!(
+            STANDARD.decode(&authentication_hash.calculate_hash_in_base64()).unwrap(),
+            authentication_hash.get_hash().as_bytes().to_vec()
+        );
+    }
+
+    #[test]
+    fn generate_random_hash_of_type_sha256() {
+        let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha256);
+        assert_eq!(HashType::Sha256, authentication_hash.get_hash_type());
+        assert_eq!(
+            STANDARD.decode(&authentication_hash.calculate_hash_in_base64()).unwrap(),
+            authentication_hash.get_hash().as_bytes().to_vec()
+        );
+    }
+}
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthenticationSessionRequest {
@@ -184,9 +233,9 @@ pub struct AuthenticationSessionRequest {
     network_interface: Option<String>,
     certificate_level: Option<String>,
     hash: String,
-    hash_type: String,
+    hash_type: HashType,
     nonce: Option<String>,
-    allowed_interactions_order: Option<Vec<Interaction>>,
+    allowed_interactions_order: Vec<Interaction>,
 }
 
 impl AuthenticationSessionRequest {
@@ -197,9 +246,9 @@ impl AuthenticationSessionRequest {
             network_interface: None,
             certificate_level: None,
             hash: String::new(),
-            hash_type: String::new(),
+            hash_type: HashType::Sha512,
             nonce: None,
-            allowed_interactions_order: None,
+            allowed_interactions_order: Vec::new(),
         }
     }
 
@@ -227,8 +276,8 @@ impl AuthenticationSessionRequest {
         self.network_interface.as_deref()
     }
 
-    pub fn set_certificate_level(&mut self, certificate_level: Option<String>) {
-        self.certificate_level = certificate_level;
+    pub fn set_certificate_level(&mut self, certificate_level: String) {
+        self.certificate_level = Some(certificate_level.to_string());
     }
 
     pub fn get_certificate_level(&self) -> Option<&str> {
@@ -243,55 +292,75 @@ impl AuthenticationSessionRequest {
         &self.hash
     }
 
-    pub fn set_hash_type(&mut self, hash_type: &str) {
-        self.hash_type = hash_type.to_string();
+    pub fn set_hash_type(&mut self, hash_type: HashType) {
+        self.hash_type = hash_type;
     }
 
-    pub fn get_hash_type(&self) -> &str {
-        &self.hash_type
+    pub fn get_hash_type(&self) -> HashType {
+        self.hash_type.clone()
     }
 
-    pub fn set_nonce(&mut self, nonce: Option<&str>) {
-        self.nonce = nonce.map(|s| s.to_string());
+    pub fn set_nonce(&mut self, nonce: String) {
+        self.nonce = Some(nonce.to_string());
     }
 
     pub fn get_nonce(&self) -> Option<&str> {
         self.nonce.as_deref()
     }
 
-    pub fn set_allowed_interactions_order(&mut self, allowed_interactions_order: Option<Vec<Interaction>>) {
+    pub fn set_allowed_interactions_order(
+        &mut self,
+        allowed_interactions_order: Vec<Interaction>,
+    ) {
         self.allowed_interactions_order = allowed_interactions_order;
     }
 
-    pub fn get_allowed_interactions_order(&self) -> Option<&Vec<Interaction>> {
-        self.allowed_interactions_order.as_ref()
+    pub fn get_allowed_interactions_order(&self) -> &Vec<Interaction> {
+        &self.allowed_interactions_order
     }
 
     pub fn to_array(&self) -> HashMap<String, Value> {
         let mut required_array = HashMap::new();
-        required_array.insert("relyingPartyUUID".to_string(), Value::String(self.relying_party_uuid.clone()));
-        required_array.insert("relyingPartyName".to_string(), Value::String(self.relying_party_name.clone()));
+        required_array.insert(
+            "relyingPartyUUID".to_string(),
+            Value::String(self.relying_party_uuid.clone()),
+        );
+        required_array.insert(
+            "relyingPartyName".to_string(),
+            Value::String(self.relying_party_name.clone()),
+        );
         required_array.insert("hash".to_string(), Value::String(self.hash.clone()));
-        required_array.insert("hashType".to_string(), Value::String(self.hash_type.to_uppercase()));
+        required_array.insert(
+            "hashType".to_string(),
+            Value::String(self.hash_type.to_string().to_uppercase()),
+        );
 
         if let Some(certificate_level) = &self.certificate_level {
-            required_array.insert("certificateLevel".to_string(), Value::String(certificate_level.clone()));
+            required_array.insert(
+                "certificateLevel".to_string(),
+                Value::String(certificate_level.clone()),
+            );
         }
 
-        if let Some(allowed_interactions_order) = &self.allowed_interactions_order {
-            let interactions_array: Vec<Value> = allowed_interactions_order
+            let interactions_array: Vec<Value> = self.allowed_interactions_order
                 .iter()
                 .map(|interaction| Value::from(interaction.to_array()))
                 .collect();
-            required_array.insert("allowedInteractionsOrder".to_string(), Value::Array(interactions_array));
-        }
+            required_array.insert(
+                "allowedInteractionsOrder".to_string(),
+                Value::Array(interactions_array),
+            );
+
 
         if let Some(nonce) = &self.nonce {
             required_array.insert("nonce".to_string(), Value::String(nonce.clone()));
         }
 
         if let Some(network_interface) = &self.network_interface {
-            required_array.insert("networkInterface".to_string(), Value::String(network_interface.clone()));
+            required_array.insert(
+                "networkInterface".to_string(),
+                Value::String(network_interface.clone()),
+            );
         }
 
         required_array
@@ -306,36 +375,28 @@ pub struct AuthenticationSessionResponse {
 pub struct CertificateParser;
 
 impl CertificateParser {
-    const BEGIN_CERT: &'static str = "-----BEGIN CERTIFICATE-----";
-    const END_CERT: &'static str = "-----END CERTIFICATE-----";
+    //let certificate_bytes = CertificateParser::get_der_certificate(certificate_value).unwrap();
 
-    pub fn parse_x509_certificate(certificate_value: &str) -> Result<X509, ErrorStack> {
-        let certificate_string = CertificateParser::get_pem_certificate(certificate_value).unwrap();
-        X509::from_pem(certificate_string.as_bytes())
+    pub fn parse_x509_certificate(certificate: &[u8]) -> Result<X509Certificate, anyhow::Error> {
+        let (rest, parsed_cert) = parse_x509_certificate(certificate).unwrap();
+        if !rest.is_empty() {
+            return Err(anyhow!("Failed to parse the entire X.509 certificate"));
+        }
+        Ok(parsed_cert)
     }
 
-    pub fn get_pem_certificate(certificate_value: &str) -> Result<String, &'static str> {
+    pub fn get_der_certificate(certificate_value: String) -> Result<Vec<u8>, Box<dyn Error>> {
         let certificate_value = certificate_value.trim();
-        if certificate_value.starts_with(CertificateParser::BEGIN_CERT) {
-            let certificate_value = &certificate_value[CertificateParser::BEGIN_CERT.len()..];
-            if certificate_value.ends_with(CertificateParser::END_CERT) {
-                let certificate_value = &certificate_value[..certificate_value.len() - CertificateParser::END_CERT.len()];
-                let certificate_value = certificate_value.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-                let mut pem_certificate = String::new();
-                pem_certificate.push_str(CertificateParser::BEGIN_CERT);
-                pem_certificate.push('\n');
-                for chunk in certificate_value.chars().collect::<Vec<char>>().chunks(64) {
-                    let line: String = chunk.iter().collect();
-                    pem_certificate.push_str(&line);
-                    pem_certificate.push('\n');
-                }
-                pem_certificate.push_str(CertificateParser::END_CERT);
-                Ok(pem_certificate)
-            } else {
-                Err("Invalid certificate format: missing END_CERT")
-            }
+        let begin_cert = "-----BEGIN CERTIFICATE-----";
+        let end_cert = "-----END CERTIFICATE-----";
+
+        if certificate_value.starts_with(begin_cert) && certificate_value.ends_with(end_cert) {
+            let base64_cert = &certificate_value[begin_cert.len()..certificate_value.len() - end_cert.len()];
+            let base64_decoded = general_purpose::STANDARD
+                .decode(base64_cert).unwrap();
+            Ok(base64_decoded)
         } else {
-            Err("Invalid certificate format: missing BEGIN_CERT")
+            Err("Invalid certificate format: missing BEGIN_CERT or END_CERT".into())
         }
     }
 }
@@ -343,7 +404,7 @@ impl CertificateParser {
 pub struct DigestCalculator;
 
 impl DigestCalculator {
-    pub fn calculate_digest(data_to_digest: &str, hash_type: &HashType) -> String {
+    pub fn calculate_digest(data_to_digest: &str, hash_type: HashType) -> String {
         use openssl::hash::{hash, MessageDigest};
         let message_digest = match hash_type {
             HashType::Md5 => MessageDigest::md5(),
@@ -353,11 +414,13 @@ impl DigestCalculator {
             HashType::Sha512 => MessageDigest::sha512(),
             _ => panic!("Unsupported hash type: {}", hash_type),
         };
-        hash(message_digest, data_to_digest.as_bytes()).unwrap().encode_hex()
+        hash(message_digest, data_to_digest.as_bytes())
+            .unwrap()
+            .encode_hex()
     }
 }
 
-#[derive(Display, EnumString)]
+#[derive(Display,Debug,Clone, PartialEq, EnumString,Serialize, Deserialize)]
 pub enum HashType {
     Md5,
     Sha1,
@@ -366,8 +429,7 @@ pub enum HashType {
     Sha512,
 }
 
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 pub struct Interaction {
     interaction_type: InteractionType,
     display_text60: Option<String>,
@@ -450,7 +512,7 @@ impl Interaction {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 pub enum InteractionType {
     DisplayTextAndPIN,
     VerificationCodeChoice,
@@ -470,7 +532,6 @@ impl InteractionType {
         }
     }
 }
-
 
 pub struct SemanticsIdentifier {
     semantics_identifier: String, // https://www.etsi.org/deliver/etsi_en/319400_319499/31941201/01.01.01_60/en_31941201v010101p.pdf in chapter 5.1.3
@@ -503,7 +564,6 @@ impl SemanticsIdentifier {
     }
 }
 
-
 pub struct SemanticsIdentifierBuilder {
     semantics_identifier_type: Option<String>,
     country_code: Option<String>,
@@ -519,7 +579,10 @@ impl SemanticsIdentifierBuilder {
         }
     }
 
-    pub fn with_semantics_identifier_type(mut self, semantics_identifier_type: String) -> SemanticsIdentifierBuilder {
+    pub fn with_semantics_identifier_type(
+        mut self,
+        semantics_identifier_type: String,
+    ) -> SemanticsIdentifierBuilder {
         self.semantics_identifier_type = Some(semantics_identifier_type);
         self
     }
@@ -535,11 +598,19 @@ impl SemanticsIdentifierBuilder {
     }
 
     pub fn build(&self) -> Result<SemanticsIdentifier, String> {
-        let semantics_identifier_type = self.semantics_identifier_type.clone().ok_or("Semantics identifier type is missing")?;
+        let semantics_identifier_type = self
+            .semantics_identifier_type
+            .clone()
+            .ok_or("Semantics identifier type is missing")?;
         let country_code = self.country_code.clone().ok_or("Country code is missing")?;
         let identifier = self.identifier.clone().ok_or("Identifier is missing")?;
-        let semantics_identifier_string = format!("{}{}-{}", semantics_identifier_type, country_code, identifier);
-        Ok(SemanticsIdentifier::from_string(semantics_identifier_string))
+        let semantics_identifier_string = format!(
+            "{}{}-{}",
+            semantics_identifier_type, country_code, identifier
+        );
+        Ok(SemanticsIdentifier::from_string(
+            semantics_identifier_string,
+        ))
     }
 }
 
@@ -550,7 +621,6 @@ impl SemanticsIdentifierTypes {
     pub const PAS: &'static str = "PAS";
     pub const IDC: &'static str = "IDC";
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionCertificate {
@@ -585,19 +655,30 @@ impl SessionCertificate {
     }
 }
 
-#[derive(Debug,PartialEq,EnumString,Display, Clone, Serialize, Deserialize)]
-pub enum  SessionEndResultCode {
+#[derive(Debug, PartialEq, EnumString, Display, Clone, Serialize, Deserialize)]
+pub enum SessionEndResultCode {
+    #[strum(serialize = "OK")]
     OK,
+    #[strum(serialize = "USER_REFUSED")]
     USER_REFUSED,
+    #[strum(serialize = "TIMEOUT")]
     TIMEOUT,
+    #[strum(serialize = "DOCUMENT_UNUSABLE")]
     DOCUMENT_UNUSABLE,
+    #[strum(serialize = "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP")]
     REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP,
+    #[strum(serialize = "USER_REFUSED_DISPLAYTEXTANDPIN")]
     USER_REFUSED_DISPLAYTEXTANDPIN,
+    #[strum(serialize = "USER_REFUSED_VC_CHOICE")]
     USER_REFUSED_VC_CHOICE,
+    #[strum(serialize = "USER_REFUSED_CONFIRMATIONMESSAGE")]
     USER_REFUSED_CONFIRMATIONMESSAGE,
+    #[strum(serialize = "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE")]
     USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE,
+    #[strum(serialize = "USER_REFUSED_CERT_CHOICE")]
     USER_REFUSED_CERT_CHOICE,
-    WRONG_VC
+    #[strum(serialize = "WRONG_VC")]
+    WRONG_VC,
 }
 
 // impl SessionEndResultCode {
@@ -749,7 +830,7 @@ impl SessionStatus {
     }
 }
 
-#[derive(Display,Clone, Debug, PartialEq, EnumString, Serialize, Deserialize)]
+#[derive(Display, Clone, Debug, PartialEq, EnumString, Serialize, Deserialize)]
 pub enum SessionStatusCode {
     RUNNING,
     COMPLETE,
@@ -792,10 +873,8 @@ impl SessionStatusRequest {
         let timeout_ms = self.session_status_response_socket_timeout_ms;
         json_obj["timeoutMs"] = serde_json::Value::Number(serde_json::Number::from(timeout_ms));
 
-
         let network_interface = &self.network_interface;
         json_obj["networkInterface"] = serde_json::Value::String(network_interface.clone());
-
 
         json_obj
     }
@@ -816,11 +895,11 @@ impl SignableData {
 
     pub fn calculate_hash_in_base64(&self) -> String {
         let digest = self.calculate_hash();
-        base64::encode_block(&digest)
+        general_purpose::STANDARD.encode(&digest)
     }
 
     pub fn calculate_hash(&self) -> Vec<u8> {
-        DigestCalculator::calculate_digest(&self.data_to_sign, &self.hash_type).into_bytes()
+        DigestCalculator::calculate_digest(&self.data_to_sign, self.hash_type.clone()).into_bytes()
     }
 
     pub fn set_hash_type(&mut self, hash_type: HashType) {
@@ -840,8 +919,7 @@ impl SignableData {
     }
 }
 
-
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmartIdAuthenticationResponse {
     pub end_result: SessionEndResultCode,
     pub signed_data: String,
@@ -901,7 +979,7 @@ impl SmartIdAuthenticationResponse {
         self.algorithm_name.as_deref().unwrap_or("")
     }
 
-    pub fn set_algorithm_name(&mut self, algorithm_name: &String) {
+    pub fn set_algorithm_name(&mut self, algorithm_name: String) {
         self.algorithm_name = Some(algorithm_name.clone());
     }
 
@@ -909,14 +987,16 @@ impl SmartIdAuthenticationResponse {
         self.certificate.as_str()
     }
 
-    pub fn get_parsed_certificate(&self) -> Result<X509, ErrorStack> {
-        CertificateParser::parse_x509_certificate(self.certificate.as_str())
-    }
+    // pub fn get_parsed_certificate<'a>(&self) -> Result<X509Certificate<'a>, anyhow::Error> {
+    //     let certificate = CertificateParser::get_der_certificate(self.certificate.clone()).unwrap();
+    //     CertificateParser::parse_x509_certificate(certificate.as_slice())
+    // }
 
-    pub fn get_certificate_instance(&self) -> Option<AuthenticationCertificate> {
-        let parsed = CertificateParser::parse_x509_certificate(self.certificate.as_str()).unwrap();
-        Some(AuthenticationCertificate::new(parsed))
-    }
+    // pub fn get_certificate_instance(&self) -> Option<X509Certificate> {
+    //     let certificate = CertificateParser::get_der_certificate(self.certificate.clone()).unwrap();
+    //     let parsed = CertificateParser::parse_x509_certificate(certificate.as_slice()).unwrap();
+    //     Some(parsed)
+    // }
 
     pub fn set_certificate(&mut self, certificate: String) {
         self.certificate = certificate;
@@ -940,11 +1020,18 @@ impl SmartIdAuthenticationResponse {
 
     pub fn get_value(&self) -> Result<Vec<u8>, Exception> {
         match self.value_in_base64.is_empty() {
-            true => Err(TechnicalErrorException("No value in base64 format".to_string())),
+            true => Err(TechnicalErrorException(
+                "No value in base64 format".to_string(),
+            )),
             false => {
-                let decoded = base64::decode_block(self.value_in_base64.as_str())
-                        .map_err(|_| TechnicalErrorException(format!("Failed to decode base64: {}", self.value_in_base64)))?;
-                    Ok(decoded)
+                let decoded =
+                    general_purpose::STANDARD.decode(self.value_in_base64.as_str()).map_err(|_| {
+                        TechnicalErrorException(format!(
+                            "Failed to decode base64: {}",
+                            self.value_in_base64
+                        ))
+                    })?;
+                Ok(decoded)
             }
         }
     }

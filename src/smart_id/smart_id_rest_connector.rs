@@ -1,20 +1,28 @@
+use crate::smart_id::models::{
+    AuthenticationSessionRequest, AuthenticationSessionResponse, SemanticsIdentifier,
+    SessionStatus, SessionStatusRequest,
+};
 use reqwest::{Client, Error};
-use crate::smart_id::models::{AuthenticationSessionRequest, AuthenticationSessionResponse, SemanticsIdentifier, SessionStatus, SessionStatusRequest};
 
-
+#[derive(Clone)]
 pub struct SmartIdRestConnector<'a> {
-    endpoint_url: &'a str,
+    endpoint_url: String,
+    relying_party_uuid: Option<&'a str>,
+    relying_party_name: Option<&'a str>,
     client: Client,
 }
 
 impl SmartIdRestConnector<'_> {
-     pub fn new(endpoint_url: &str) -> Self {
+    pub fn new(endpoint_url: String) -> Self {
         SmartIdRestConnector {
             endpoint_url,
-            client: Client::new(),}
+            client: Client::new(),
+            relying_party_uuid: None,
+            relying_party_name: None,
+        }
     }
 
-     pub async fn authenticate(
+    pub async fn authenticate(
         &self,
         document_number: String,
         request: AuthenticationSessionRequest,
@@ -39,9 +47,18 @@ impl SmartIdRestConnector<'_> {
         self.post_authentication_request(&url, request).await
     }
 
-    pub async fn get_session_status(&self, request: SessionStatusRequest) -> Result<SessionStatus, Error> {
+    pub async fn get_session_status(
+        &self,
+        request: SessionStatusRequest,
+    ) -> Result<SessionStatus, Error> {
         let url = format!("{}/session/{}", self.endpoint_url, request.session_id);
-        let response = self.client.get(url).send().await?.json::<SessionStatus>().await?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await?
+            .json::<SessionStatus>()
+            .await?;
         Ok(response)
     }
 
@@ -54,8 +71,10 @@ impl SmartIdRestConnector<'_> {
             .client
             .post(url)
             .json(&request)
-            .send().await?
-            .json::<AuthenticationSessionResponse>().await?;
+            .send()
+            .await?
+            .json::<AuthenticationSessionResponse>()
+            .await?;
         Ok(response)
     }
 
@@ -66,6 +85,15 @@ impl SmartIdRestConnector<'_> {
         //         public_ssl_keys.join("\n").as_bytes()
         //     ).unwrap()
         // );
+    }
+
+    pub fn get_relying_party_uuid(&self) -> Option<&str> {
+        self.relying_party_uuid
+
+    }
+
+    pub fn get_relying_party_name(&self) -> Option<&str> {
+        self.relying_party_name
     }
 
     pub fn with_relying_party_uuid(&mut self, relying_party_uuid: &str) -> &mut Self {
@@ -95,5 +123,3 @@ impl SmartIdRestConnector<'_> {
     }
 
 }
-
-

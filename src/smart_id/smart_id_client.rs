@@ -1,6 +1,5 @@
+use crate::smart_id::authentication::AuthenticationApi;
 use std::collections::HashMap;
-use crate::smart_id::api_type::ApiType;
-use crate::smart_id::authentication::{ AuthenticationApi};
 
 pub struct SmartIdApi {
     pub client: SmartIdClient,
@@ -17,7 +16,7 @@ impl SmartIdApi {
     }
 }
 
-pub trait AbstractApi{}
+pub trait AbstractApi {}
 
 pub struct SmartIdClient {
     apis: HashMap<String, Box<dyn AbstractApi>>,
@@ -36,26 +35,12 @@ impl SmartIdClient {
             relying_party_uuid: String::new(),
             relying_party_name: String::new(),
             host_url: String::new(),
-            ssl_keys: Vec::new()
+            ssl_keys: Vec::new(),
         }
     }
 
-    pub fn api(&mut self, api_name: ApiType) -> Result<&mut dyn AbstractApi, String> {
-        match api_name {
-            ApiType::Authentication => self.authentication(),
-            _ => Err(String::from("No such api at present time!")),
-        }
-    }
-
-    pub fn authentication(&mut self) -> Result<&mut dyn AbstractApi, String> {
-        if !self.apis.contains_key("authentication") {
-            let authentication = Box::new(AuthenticationApi::new(self));
-            self.apis.insert(String::from("authentication"), authentication);
-        }
-        match self.apis.get_mut("authentication") {
-            Some(api) => Ok(api.as_mut()),
-            None => Err(String::from("Failed to retrieve authentication API.")),
-        }
+    pub fn authentication(&mut self) -> AuthenticationApi {
+            AuthenticationApi::new(self)
     }
 
     pub fn set_relying_party_uuid(&mut self, relying_party_uuid: String) -> &mut Self {
@@ -81,8 +66,8 @@ impl SmartIdClient {
         self
     }
 
-    pub fn get_host_url(&self) -> &str {
-        &self.host_url
+    pub fn get_host_url(&self) -> String {
+        self.host_url.clone()
     }
 
     pub fn set_public_ssl_keys(&mut self, ssl_keys: Vec<String>) -> &mut Self {

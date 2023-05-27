@@ -1,40 +1,57 @@
+use crate::smart_id::exceptions::Exception;
+use crate::smart_id::exceptions::Exception::{
+    DocumentUnusableException, RequiredInteractionNotSupportedByAppException,
+    SessionTimeoutException, TechnicalErrorException, UserRefusedCertChoiceException,
+    UserRefusedConfirmationMessageException, UserRefusedConfirmationMessageWithVcChoiceException,
+    UserRefusedDisplayTextAndPinException, UserRefusedException, UserRefusedVcChoiceException,
+    UserSelectedWrongVerificationCodeException,
+};
+use crate::smart_id::models::{AuthenticationHash, SessionEndResultCode, SessionStatus, SignableData};
+use crate::smart_id::session_status_fetcher::{SessionStatusFetcher};
+use std::cmp;
 use std::thread::sleep;
 use std::time::Duration;
-use std::cmp;
-use crate::smart_id::exceptions::Exception;
-use crate::smart_id::exceptions::Exception::{DocumentUnusableException, RequiredInteractionNotSupportedByAppException, SessionTimeoutException, TechnicalErrorException, UserRefusedCertChoiceException, UserRefusedConfirmationMessageException, UserRefusedConfirmationMessageWithVcChoiceException, UserRefusedDisplayTextAndPinException, UserRefusedException, UserRefusedVcChoiceException, UserSelectedWrongVerificationCodeException};
-use crate::smart_id::models::{SessionEndResultCode, SessionStatus};
-use crate::smart_id::session_status_fetcher::{SessionStatusFetcher, SessionStatusFetcherBuilder};
-use crate::smart_id::smart_id_rest_connector::SmartIdRestConnector;
 
-pub struct SessionStatusPoller<'a> {
-    connector: &'a SmartIdRestConnector<'a>,
+#[derive(Clone)]
+pub struct SessionStatusPoller {
     polling_sleep_timeout_ms: u64,
     session_status_response_socket_timeout_ms: u64,
-    network_interface: Option<String>,
+    network_interface: String,
+    endpoint_url: String,
 }
 
-impl SessionStatusPoller<'_> {
-    pub fn new(connector: &SmartIdRestConnector) -> Self {
+impl<'a> SessionStatusPoller{
+    pub fn new(endpoint_url: String) -> SessionStatusPoller {
         SessionStatusPoller {
-            connector,
             polling_sleep_timeout_ms: 1000,
             session_status_response_socket_timeout_ms: 0,
-            network_interface: None,
+            network_interface: String::from(""),
+            endpoint_url,
         }
     }
 
-    pub async fn fetch_final_session_status(&self, session_id: String) -> Result<Option<SessionStatus>, Box<dyn std::error::Error>> {
-        let session_status = self.poll_for_final_session_status(session_id).await.unwrap();
+    pub async fn fetch_final_session_status(
+        &self,
+        session_id: String,
+    ) -> Result<Option<SessionStatus>, Box<dyn std::error::Error>> {
+        let session_status = self
+            .poll_for_final_session_status(session_id)
+            .await
+            .unwrap();
         self.validate_result(&session_status).unwrap();
         Ok(session_status)
     }
 
-    async fn poll_for_final_session_status(&self, session_id: String) -> Result<Option<SessionStatus>, Box<dyn std::error::Error>> {
+    async fn poll_for_final_session_status(
+        &self,
+        session_id: String,
+    ) -> Result<Option<SessionStatus>, Box<dyn std::error::Error>> {
         let mut session_status: Option<SessionStatus> = None;
-        let session_status_fetcher = self.create_session_status_fetcher(session_id)?;
+        let session_status_fetcher = self.create_session_status_fetcher(session_id, None, None);
 
-        while session_status.is_none() || (session_status.is_some() && session_status.as_ref().unwrap().is_running_state()) {
+        while session_status.is_none()
+            || (session_status.is_some() && session_status.as_ref().unwrap().is_running_state())
+        {
             session_status = Some(session_status_fetcher.get_session_status().await);
             if let Some(status) = &session_status {
                 if !status.is_running_state() {
@@ -55,21 +72,41 @@ impl SessionStatusPoller<'_> {
                     SessionEndResultCode::USER_REFUSED => Err(UserRefusedException),
                     SessionEndResultCode::TIMEOUT => Err(SessionTimeoutException),
                     SessionEndResultCode::DOCUMENT_UNUSABLE => Err(DocumentUnusableException),
-                    SessionEndResultCode::REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP => Err(RequiredInteractionNotSupportedByAppException),
-                    SessionEndResultCode::USER_REFUSED_DISPLAYTEXTANDPIN => Err(UserRefusedDisplayTextAndPinException),
-                    SessionEndResultCode::USER_REFUSED_VC_CHOICE => Err(UserRefusedVcChoiceException),
-                    SessionEndResultCode::USER_REFUSED_CONFIRMATIONMESSAGE => Err(UserRefusedConfirmationMessageException),
-                    SessionEndResultCode::USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE => Err(UserRefusedConfirmationMessageWithVcChoiceException),
-                    SessionEndResultCode::USER_REFUSED_CERT_CHOICE => Err(UserRefusedCertChoiceException),
-                    SessionEndResultCode::WRONG_VC => Err(UserSelectedWrongVerificationCodeException),
+                    SessionEndResultCode::REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP => {
+                        Err(RequiredInteractionNotSupportedByAppException)
+                    }
+                    SessionEndResultCode::USER_REFUSED_DISPLAYTEXTANDPIN => {
+                        Err(UserRefusedDisplayTextAndPinException)
+                    }
+                    SessionEndResultCode::USER_REFUSED_VC_CHOICE => {
+                        Err(UserRefusedVcChoiceException)
+                    }
+                    SessionEndResultCode::USER_REFUSED_CONFIRMATIONMESSAGE => {
+                        Err(UserRefusedConfirmationMessageException)
+                    }
+                    SessionEndResultCode::USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE => {
+                        Err(UserRefusedConfirmationMessageWithVcChoiceException)
+                    }
+                    SessionEndResultCode::USER_REFUSED_CERT_CHOICE => {
+                        Err(UserRefusedCertChoiceException)
+                    }
+                    SessionEndResultCode::WRONG_VC => {
+                        Err(UserSelectedWrongVerificationCodeException)
+                    }
                     SessionEndResultCode::OK => Ok(()),
-                    _ => Err(TechnicalErrorException("Session status end result is unknown".to_string())),
+                    _ => Err(TechnicalErrorException(
+                        "Session status end result is unknown".to_string(),
+                    )),
                 }
             } else {
-                Err(TechnicalErrorException("Result is missing in the session status response".to_string()))
+                Err(TechnicalErrorException(
+                    "Result is missing in the session status response".to_string(),
+                ))
             }
         } else {
-            Err(TechnicalErrorException("Session status is missing".to_string()))
+            Err(TechnicalErrorException(
+                "Session status is missing".to_string(),
+            ))
         }
     }
 
@@ -87,20 +124,30 @@ impl SessionStatusPoller<'_> {
         self
     }
 
-    fn create_session_status_fetcher(&self, session_id: String) -> Result<SessionStatusFetcher, Box<dyn std::error::Error>> {
-        let mut builder: SessionStatusFetcherBuilder = SessionStatusFetcherBuilder::new(self.connector.clone());
-        builder = builder.with_session_id(session_id);
-        builder = builder.with_session_status_response_socket_timeout_ms(self.session_status_response_socket_timeout_ms).unwrap();
-        builder = if let Some(network_interface) = &self.network_interface {
-            builder.with_network_interface(network_interface.clone())
-        } else {
-            builder
-        };
-        Ok(builder.build())
+    fn create_session_status_fetcher(
+        &'a self,
+        session_id: String,
+        data_to_sign: Option<&'a SignableData>,
+        authentication_hash: Option<&'a AuthenticationHash>,
+    ) -> SessionStatusFetcher {
+        let mut session_status_fetcher = SessionStatusFetcher::new(self.endpoint_url.clone(), session_id);
+        //     session_status_response_socket_timeout_ms: self.session_status_response_socket_timeout_ms,
+        //     network_interface: Some(self.network_interface.clone()),
+        //     data_to_sign: None,
+        //     authentication_hash: None,
+        // };
+
+        if data_to_sign.is_some() {
+            session_status_fetcher.data_to_sign = Some(data_to_sign.unwrap());
+        }
+        if authentication_hash.is_some() {
+            session_status_fetcher.authentication_hash = authentication_hash;
+        }
+        session_status_fetcher
     }
 
     pub fn with_network_interface(&mut self, network_interface: String) -> &mut Self {
-        self.network_interface = Some(network_interface);
+        self.network_interface = network_interface;
         self
     }
 }
