@@ -1,4 +1,4 @@
-use crate::smart_id::certificate_level::CertificateLevel;
+use crate::smart_id::models::certificate_level::CertificateLevel;
 use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
 use crate::smart_id::models::{
      CertificateParser, SessionEndResultCode,

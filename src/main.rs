@@ -24,7 +24,7 @@ const NETWORK_INTERFACE: &str = "docker0"; // network interface in machine. for 
 
 fn main() {
 
-    let mut client = SmartIdClient::new();
+    let mut client = SmartIdClient::new(DEMO_HOST_URL,);
     client
         .set_relying_party_uuid(DEMO_RELYING_PARTY_UUID.to_string())
         .set_relying_party_name(DEMO_RELYING_PARTY_NAME.to_string())

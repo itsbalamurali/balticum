@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationIdentity {
     pub given_name: String,
     pub sur_name: String,

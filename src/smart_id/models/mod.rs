@@ -1,7 +1,6 @@
-use crate::smart_id::exceptions::Exception;
-use crate::smart_id::exceptions::Exception::{InvalidParametersException, TechnicalErrorException};
+use crate::smart_id::errors::Exception;
+use crate::smart_id::errors::Exception::{InvalidParametersException, TechnicalErrorException};
 use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
-use crate::smart_id::models::verification_code_calculator::VerificationCodeCalculator;
 use hex::ToHex;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -14,14 +13,14 @@ use base64::engine::general_purpose;
 use strum::Display;
 use strum::EnumString;
 use thiserror::Error;
-use x509_parser::{certificate, parse_x509_certificate};
-use x509_parser::nom::AsBytes;
-use x509_parser::prelude::{X509Certificate};
+use x509_parser::parse_x509_certificate;
+use x509_parser::prelude::X509Certificate;
+use crate::smart_id::verification_code_calculator::VerificationCodeCalculator;
 
 pub mod authentication_identity;
-mod verification_code_calculator;
+pub mod certificate_level;
 
-#[derive(Error, Debug)]
+#[derive(Error,Clone, Debug, Serialize, Deserialize)]
 pub enum SmartIdAuthenticationResultError {
     #[error("Response end result verification failed.")]
     InvalidEndResult,
@@ -44,6 +43,7 @@ pub enum SmartIdAuthenticationResultError {
 //         "Signer's certificate level does not match with the requested level.";
 // }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmartIdAuthenticationResult {
     pub authentication_identity: Option<AuthenticationIdentity>,
     pub valid: bool,
@@ -239,14 +239,15 @@ pub struct AuthenticationSessionRequest {
 }
 
 impl AuthenticationSessionRequest {
-    pub fn new() -> Self {
+
+    pub fn new(relying_party_uuid: String, relying_party_name: String, hash: String, hash_type: HashType) -> Self {
         AuthenticationSessionRequest {
-            relying_party_uuid: String::new(),
-            relying_party_name: String::new(),
+            relying_party_uuid,
+            relying_party_name,
             network_interface: None,
             certificate_level: None,
-            hash: String::new(),
-            hash_type: HashType::Sha512,
+            hash: hash,
+            hash_type,
             nonce: None,
             allowed_interactions_order: Vec::new(),
         }
@@ -268,8 +269,8 @@ impl AuthenticationSessionRequest {
         &self.relying_party_name
     }
 
-    pub fn set_network_interface(&mut self, network_interface: Option<&str>) {
-        self.network_interface = network_interface.map(|s| s.to_string());
+    pub fn set_network_interface(&mut self, network_interface: String) {
+        self.network_interface = Some(network_interface);
     }
 
     pub fn get_network_interface(&self) -> Option<&str> {
@@ -622,7 +623,7 @@ impl SemanticsIdentifierTypes {
     pub const IDC: &'static str = "IDC";
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 pub struct SessionCertificate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) value: Option<String>,
@@ -697,7 +698,7 @@ pub enum SessionEndResultCode {
 //     pub const WRONG_VC: &'static str = "WRONG_VC";
 // }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 pub struct SessionResult {
     pub end_result: SessionEndResultCode,
     pub document_number: Option<String>,
@@ -724,7 +725,7 @@ impl SessionResult {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 pub struct SessionSignature {
     pub algorithm: Option<String>,
     pub value: Option<String>,
@@ -755,7 +756,7 @@ impl SessionSignature {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize)]
 pub struct SessionStatus {
     pub state: SessionStatusCode,
     pub result: Option<SessionResult>,

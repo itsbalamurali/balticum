@@ -1,13 +1,10 @@
-mod api_type;
 mod authentication;
 mod authentication_request_builder;
 mod authentication_response_validator;
-mod certificate_level;
-mod exceptions;
+mod errors;
 pub mod models;
 mod session_status_fetcher;
 mod session_status_poller;
 pub mod smart_id_client;
-mod smart_id_request_builder;
-pub mod smart_id_rest_connector;
 pub mod utils;
+mod verification_code_calculator;

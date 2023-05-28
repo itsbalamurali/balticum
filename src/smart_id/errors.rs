@@ -17,6 +17,12 @@ pub enum Exception {
     #[error("Session timed out")]
     SessionTimeoutException,
 
+    #[error("Session in progress")]
+    SessionInProgress,
+
+    #[error("Session status is missing result in response")]
+    SessionStatusMissingResult,
+
     #[error("Technical error {0}")]
     TechnicalErrorException(String),
 

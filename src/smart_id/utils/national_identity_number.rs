@@ -1,5 +1,5 @@
-use crate::smart_id::exceptions::Exception;
-use crate::smart_id::exceptions::Exception::UnprocessableSmartIdResponseException;
+use crate::smart_id::errors::Exception;
+use crate::smart_id::errors::Exception::UnprocessableSmartIdResponseException;
 use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
 use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
 
