@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error,Debug)]
+#[derive(Error, Debug)]
 pub enum MobileIdError {
     #[error("Mobile-ID error: {0}")]
     MidInternalError(String),

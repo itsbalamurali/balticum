@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Exception {
+    #[error("Smart-ID service is not available")]
+    SmartIdServiceUnavailable,
+
+    #[error("Smart-ID unauthorized")]
+    SmartIdUnauthorized,
+    
     #[error("User selected wrong verification code")]
     UserSelectedWrongVerificationCodeException,
 
@@ -24,7 +30,7 @@ pub enum Exception {
     SessionStatusMissingResult,
 
     #[error("Technical error {0}")]
-    TechnicalErrorException(String),
+    TechnicalError(String),
 
     #[error("User refused certificate choice")]
     UserRefusedCertChoiceException,

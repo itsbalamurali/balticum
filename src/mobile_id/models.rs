@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use strum::EnumString;
+
 use crate::mobile_id::errors::MobileIdError;
 use crate::mobile_id::errors::MobileIdError::MissingOrInvalidParameter;
-use strum::EnumString;
 use crate::mobile_id::models::SessionStatusState::{COMPLETE, INITIALIZED};
 
-#[derive(Debug,EnumString, Serialize, Deserialize)]
-pub enum Language{
+#[derive(Debug, EnumString, Serialize, Deserialize)]
+pub enum Language {
     EST,
     ENG,
     RUS,
@@ -18,7 +19,7 @@ pub enum Language{
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthenticationRequest {
     #[serde(rename = "relyingPartyUUID", skip_serializing_if = "Option::is_none")]
-    pub relying_party_uuid : Option<String>,
+    pub relying_party_uuid: Option<String>,
     #[serde(rename = "relyingPartyName", skip_serializing_if = "Option::is_none")]
     pub relying_party_name: Option<String>,
     #[serde(rename = "phoneNumber")]
@@ -44,15 +45,18 @@ pub struct MobileIdSignature {
     pub algorithm_name: String,
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStatus {
     pub state: SessionStatusState,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<MobileIdSignature>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cert: Option<String>,
 }
 
-#[derive(Debug,Clone, PartialEq, Serialize,EnumString, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, EnumString, Deserialize)]
 pub enum SessionStatusState {
     INITIALIZED,
     RUNNING,
@@ -71,7 +75,6 @@ impl SessionStatus {
         };
 
         if let Some(values) = values {
-
             if let Some(signature_values) = values.get("signature").and_then(Value::as_object) {
                 let algorithm = signature_values.get("algorithm").and_then(Value::as_str).unwrap_or("");
                 let value = signature_values.get("value").and_then(Value::as_str).unwrap_or("");
@@ -164,7 +167,7 @@ impl AuthenticationResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CertificateRequest {
     #[serde(rename = "relyingPartyUUID", skip_serializing_if = "Option::is_none")]
-    pub relying_party_uuid : Option<String>,
+    pub relying_party_uuid: Option<String>,
     #[serde(rename = "relyingPartyName", skip_serializing_if = "Option::is_none")]
     pub relying_party_name: Option<String>,
     #[serde(rename = "phoneNumber")]
@@ -173,7 +176,7 @@ pub struct CertificateRequest {
     pub national_identity_number: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CertificateResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -183,8 +186,8 @@ pub struct CertificateResponse {
     pub cert: Option<String>,
 }
 
-#[derive(Debug,EnumString,PartialEq, Serialize, Deserialize)]
-pub enum CertificateResult{
+#[derive(Debug, Clone, EnumString, PartialEq, Serialize, Deserialize)]
+pub enum CertificateResult {
     #[strum(serialize = "OK")]
     Ok,
     #[strum(serialize = "NOT_FOUND")]

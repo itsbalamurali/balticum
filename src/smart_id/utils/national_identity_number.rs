@@ -1,7 +1,8 @@
+use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
+
 use crate::smart_id::errors::Exception;
 use crate::smart_id::errors::Exception::UnprocessableSmartIdResponseException;
-use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
-use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
+use crate::smart_id::models::AuthenticationIdentity;
 
 pub struct NationalIdentityNumber;
 
@@ -44,7 +45,7 @@ impl NationalIdentityNumber {
                 return Err(UnprocessableSmartIdResponseException(format!(
                     "Invalid personal code {}",
                     ee_or_lt_national_identity_number
-                )))
+                )));
             }
         };
 
@@ -53,7 +54,7 @@ impl NationalIdentityNumber {
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
         )
-        .unwrap();
+            .unwrap();
         let datetime =
             Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))
@@ -79,7 +80,7 @@ impl NationalIdentityNumber {
                 return Err(UnprocessableSmartIdResponseException(format!(
                     "Invalid personal code: {}",
                     lv_national_identity_number
-                )))
+                )));
             }
         };
 
@@ -88,7 +89,7 @@ impl NationalIdentityNumber {
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
         )
-        .unwrap();
+            .unwrap();
         let datetime =
             Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))

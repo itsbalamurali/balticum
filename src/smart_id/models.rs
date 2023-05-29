@@ -1,26 +1,22 @@
-use crate::smart_id::errors::Exception;
-use crate::smart_id::errors::Exception::{InvalidParametersException, TechnicalErrorException};
-use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
-use hex::ToHex;
-use rand::RngCore;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::HashMap;
 use std::error::Error;
+use std::str::FromStr;
 use anyhow::anyhow;
 use base64::Engine;
 use base64::engine::general_purpose;
+use hex::ToHex;
+use rand::RngCore;
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use strum::EnumString;
 use thiserror::Error;
 use x509_parser::parse_x509_certificate;
 use x509_parser::prelude::X509Certificate;
+
+use crate::smart_id::errors::Exception;
+use crate::smart_id::errors::Exception::{InvalidParametersException, TechnicalError};
 use crate::smart_id::verification_code_calculator::VerificationCodeCalculator;
 
-pub mod authentication_identity;
-pub mod certificate_level;
-
-#[derive(Error,Clone, Debug, Serialize, Deserialize)]
+#[derive(Error, Clone, Debug, Serialize, Deserialize)]
 pub enum SmartIdAuthenticationResultError {
     #[error("Response end result verification failed.")]
     InvalidEndResult,
@@ -33,15 +29,6 @@ pub enum SmartIdAuthenticationResultError {
     #[error("Signer's certificate level does not match with the requested level.")]
     CertificateLevelMismatch,
 }
-
-// impl SmartIdAuthenticationResultError {
-//     pub const INVALID_END_RESULT: &'static str = "Response end result verification failed.";
-//     pub const SIGNATURE_VERIFICATION_FAILURE: &'static str = "Signature verification failed.";
-//     pub const CERTIFICATE_EXPIRED: &'static str = "Signer's certificate expired.";
-//     pub const CERTIFICATE_NOT_TRUSTED: &'static str = "Signer's certificate is not trusted.";
-//     pub const CERTIFICATE_LEVEL_MISMATCH: &'static str =
-//         "Signer's certificate level does not match with the requested level.";
-// }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmartIdAuthenticationResult {
@@ -90,7 +77,6 @@ pub struct AuthenticationCertificate {
     pub purposes: Vec<String>,
     pub extensions: Option<AuthenticationCertificateExtensions>,
 }
-
 
 
 pub struct AuthenticationCertificateExtensions {
@@ -192,6 +178,7 @@ impl AuthenticationHash {
 #[cfg(test)]
 mod authentication_hash_tests {
     use base64::engine::general_purpose::STANDARD;
+
     use super::*;
 
     #[test]
@@ -226,26 +213,56 @@ mod authentication_hash_tests {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthenticationSessionRequest {
+    #[serde(rename = "relyingPartyUUID")]
     relying_party_uuid: String,
     relying_party_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     network_interface: Option<String>,
-    certificate_level: Option<String>,
+    certificate_level: CertificateLevel,
     hash: String,
     hash_type: HashType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     nonce: Option<String>,
     allowed_interactions_order: Vec<Interaction>,
 }
 
-impl AuthenticationSessionRequest {
+#[derive(Debug,Clone,Default,PartialEq,EnumString, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum CertificateLevel {
+    #[strum(serialize = "QUALIFIED")]
+    #[default]
+    Qualified,
+    #[strum(serialize = "ADVANCED")]
+    Advanced,
+    #[strum(serialize = "QSCD")]
+    Qscd,
+}
 
+impl CertificateLevel {
+    pub fn is_equal_or_above(&self, certificate_level: &str) -> bool {
+        if self == &CertificateLevel::from_str(certificate_level).unwrap() {
+            true
+        } else {
+            match (certificate_level.parse().unwrap(), &self) {
+                (CertificateLevel::Advanced, CertificateLevel::Advanced)
+                | (CertificateLevel::Qualified, CertificateLevel::Qualified)
+                | (CertificateLevel::Qualified, CertificateLevel::Advanced) => true,
+                _ => false,
+            }
+        }
+    }
+}
+
+impl AuthenticationSessionRequest {
     pub fn new(relying_party_uuid: String, relying_party_name: String, hash: String, hash_type: HashType) -> Self {
         AuthenticationSessionRequest {
             relying_party_uuid,
             relying_party_name,
             network_interface: None,
-            certificate_level: None,
+            certificate_level: CertificateLevel::Qualified,
             hash: hash,
             hash_type,
             nonce: None,
@@ -277,12 +294,12 @@ impl AuthenticationSessionRequest {
         self.network_interface.as_deref()
     }
 
-    pub fn set_certificate_level(&mut self, certificate_level: String) {
-        self.certificate_level = Some(certificate_level.to_string());
+    pub fn set_certificate_level(&mut self, certificate_level:CertificateLevel) {
+        self.certificate_level = certificate_level;
     }
 
-    pub fn get_certificate_level(&self) -> Option<&str> {
-        self.certificate_level.as_deref()
+    pub fn get_certificate_level(&self) -> CertificateLevel {
+        self.certificate_level.clone()
     }
 
     pub fn set_hash(&mut self, hash: &str) {
@@ -320,56 +337,11 @@ impl AuthenticationSessionRequest {
         &self.allowed_interactions_order
     }
 
-    pub fn to_array(&self) -> HashMap<String, Value> {
-        let mut required_array = HashMap::new();
-        required_array.insert(
-            "relyingPartyUUID".to_string(),
-            Value::String(self.relying_party_uuid.clone()),
-        );
-        required_array.insert(
-            "relyingPartyName".to_string(),
-            Value::String(self.relying_party_name.clone()),
-        );
-        required_array.insert("hash".to_string(), Value::String(self.hash.clone()));
-        required_array.insert(
-            "hashType".to_string(),
-            Value::String(self.hash_type.to_string().to_uppercase()),
-        );
-
-        if let Some(certificate_level) = &self.certificate_level {
-            required_array.insert(
-                "certificateLevel".to_string(),
-                Value::String(certificate_level.clone()),
-            );
-        }
-
-            let interactions_array: Vec<Value> = self.allowed_interactions_order
-                .iter()
-                .map(|interaction| Value::from(interaction.to_array()))
-                .collect();
-            required_array.insert(
-                "allowedInteractionsOrder".to_string(),
-                Value::Array(interactions_array),
-            );
-
-
-        if let Some(nonce) = &self.nonce {
-            required_array.insert("nonce".to_string(), Value::String(nonce.clone()));
-        }
-
-        if let Some(network_interface) = &self.network_interface {
-            required_array.insert(
-                "networkInterface".to_string(),
-                Value::String(network_interface.clone()),
-            );
-        }
-
-        required_array
-    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationSessionResponse {
+    #[serde(rename = "sessionID")]
     pub session_id: String,
 }
 
@@ -421,19 +393,26 @@ impl DigestCalculator {
     }
 }
 
-#[derive(Display,Debug,Clone, PartialEq, EnumString,Serialize, Deserialize)]
+#[derive(Display,Default, Debug, Clone, PartialEq, EnumString, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+#[strum(serialize_all = "UPPERCASE")]
 pub enum HashType {
     Md5,
     Sha1,
     Sha256,
     Sha384,
+    #[default]
     Sha512,
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Interaction {
+    #[serde(rename = "type")]
     interaction_type: InteractionType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     display_text60: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     display_text200: Option<String>,
 }
 
@@ -513,7 +492,9 @@ impl Interaction {
     }
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone,EnumString, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "camelCase")]
 pub enum InteractionType {
     DisplayTextAndPIN,
     VerificationCodeChoice,
@@ -623,7 +604,7 @@ impl SemanticsIdentifierTypes {
     pub const IDC: &'static str = "IDC";
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCertificate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) value: Option<String>,
@@ -657,29 +638,41 @@ impl SessionCertificate {
 }
 
 #[derive(Debug, PartialEq, EnumString, Display, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SessionEndResultCode {
     #[strum(serialize = "OK")]
-    OK,
+    #[serde(rename = "OK")]
+    Ok,
     #[strum(serialize = "USER_REFUSED")]
-    USER_REFUSED,
+    #[serde(rename = "USER_REFUSED")]
+    UserRefused,
     #[strum(serialize = "TIMEOUT")]
-    TIMEOUT,
+    #[serde(rename = "TIMEOUT")]
+    Timeout,
     #[strum(serialize = "DOCUMENT_UNUSABLE")]
-    DOCUMENT_UNUSABLE,
+    #[serde(rename = "DOCUMENT_UNUSABLE")]
+    DocumentUnusable,
     #[strum(serialize = "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP")]
-    REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP,
+    #[serde(rename = "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP")]
+    RequiredInteractionNotSupportedByApp,
     #[strum(serialize = "USER_REFUSED_DISPLAYTEXTANDPIN")]
-    USER_REFUSED_DISPLAYTEXTANDPIN,
+    #[serde(rename = "USER_REFUSED_DISPLAYTEXTANDPIN")]
+    UserRefusedDisplayTextAndPIN,
     #[strum(serialize = "USER_REFUSED_VC_CHOICE")]
-    USER_REFUSED_VC_CHOICE,
+    #[serde(rename = "USER_REFUSED_VC_CHOICE")]
+    UserRefusedVCChoice,
     #[strum(serialize = "USER_REFUSED_CONFIRMATIONMESSAGE")]
-    USER_REFUSED_CONFIRMATIONMESSAGE,
+    #[serde(rename = "USER_REFUSED_CONFIRMATIONMESSAGE")]
+    UserRefusedConfirmationMessage,
     #[strum(serialize = "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE")]
-    USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE,
+    #[serde(rename = "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE")]
+    UserRefusedConfirmationMessageWithVCChoice,
     #[strum(serialize = "USER_REFUSED_CERT_CHOICE")]
-    USER_REFUSED_CERT_CHOICE,
+    #[serde(rename = "USER_REFUSED_CERT_CHOICE")]
+    UserRefusedCertChoice,
     #[strum(serialize = "WRONG_VC")]
-    WRONG_VC,
+    #[serde(rename = "WRONG_VC")]
+    WrongVC,
 }
 
 // impl SessionEndResultCode {
@@ -698,9 +691,10 @@ pub enum SessionEndResultCode {
 //     pub const WRONG_VC: &'static str = "WRONG_VC";
 // }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionResult {
     pub end_result: SessionEndResultCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub document_number: Option<String>,
 }
 
@@ -725,7 +719,7 @@ impl SessionResult {
     }
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSignature {
     pub algorithm: Option<String>,
     pub value: Option<String>,
@@ -756,7 +750,7 @@ impl SessionSignature {
     }
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStatus {
     pub state: SessionStatusCode,
     pub result: Option<SessionResult>,
@@ -806,8 +800,8 @@ impl SessionStatus {
         self.state.clone()
     }
 
-    pub fn get_result(&self) -> Option<&SessionResult> {
-        self.result.as_ref()
+    pub fn get_result(&self) -> Option<SessionResult> {
+        self.result.clone()
     }
 
     pub fn get_signature(&self) -> Option<&SessionSignature> {
@@ -938,7 +932,7 @@ pub struct SmartIdAuthenticationResponse {
 impl SmartIdAuthenticationResponse {
     pub fn new() -> SmartIdAuthenticationResponse {
         SmartIdAuthenticationResponse {
-            end_result: SessionEndResultCode::OK,
+            end_result: SessionEndResultCode::Ok,
             signed_data: String::new(),
             value_in_base64: String::new(),
             algorithm_name: None,
@@ -1021,13 +1015,13 @@ impl SmartIdAuthenticationResponse {
 
     pub fn get_value(&self) -> Result<Vec<u8>, Exception> {
         match self.value_in_base64.is_empty() {
-            true => Err(TechnicalErrorException(
+            true => Err(TechnicalError(
                 "No value in base64 format".to_string(),
             )),
             false => {
                 let decoded =
                     general_purpose::STANDARD.decode(self.value_in_base64.as_str()).map_err(|_| {
-                        TechnicalErrorException(format!(
+                        TechnicalError(format!(
                             "Failed to decode base64: {}",
                             self.value_in_base64
                         ))
@@ -1069,3 +1063,120 @@ impl SmartIdAuthenticationResponse {
         self.document_number.as_deref()
     }
 }
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthenticationIdentity {
+    pub given_name: String,
+    pub sur_name: String,
+    pub identity_code: String,
+    pub identity_number: String,
+    pub country: String,
+    pub auth_certificate: String,
+    pub date_of_birth: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl AuthenticationIdentity {
+    pub fn new() -> AuthenticationIdentity {
+        AuthenticationIdentity {
+            given_name: String::new(),
+            sur_name: String::new(),
+            identity_code: String::new(),
+            identity_number: String::new(),
+            country: String::new(),
+            auth_certificate: String::new(),
+            date_of_birth: None,
+        }
+    }
+
+    pub fn set_given_name(&mut self, given_name: String) -> &mut AuthenticationIdentity {
+        self.given_name = given_name;
+        self
+    }
+
+    pub fn get_given_name(&self) -> &str {
+        &self.given_name
+    }
+
+    pub fn set_sur_name(&mut self, sur_name: String) -> &mut AuthenticationIdentity {
+        self.sur_name = sur_name;
+        self
+    }
+
+    pub fn get_sur_name(&self) -> &str {
+        &self.sur_name
+    }
+
+    pub fn set_identity_code(&mut self, identity_code: String) -> &mut AuthenticationIdentity {
+        self.identity_code = identity_code;
+        self
+    }
+
+    pub fn get_identity_code(&self) -> &str {
+        &self.identity_code
+    }
+
+    pub fn set_identity_number(&mut self, identity_number: String) -> &mut AuthenticationIdentity {
+        self.identity_number = identity_number;
+        self
+    }
+
+    pub fn get_identity_number(&self) -> &str {
+        &self.identity_number
+    }
+
+    pub fn set_country(&mut self, country: String) -> &mut AuthenticationIdentity {
+        self.country = country;
+        self
+    }
+
+    pub fn get_country(&self) -> &str {
+        &self.country
+    }
+
+    pub fn set_auth_certificate(
+        &mut self,
+        auth_certificate: String,
+    ) -> &mut AuthenticationIdentity {
+        self.auth_certificate = auth_certificate;
+        self
+    }
+
+    pub fn get_auth_certificate(&self) -> &str {
+        &self.auth_certificate
+    }
+
+    pub fn set_date_of_birth(
+        &mut self,
+        date_of_birth: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> &mut AuthenticationIdentity {
+        self.date_of_birth = date_of_birth;
+        self
+    }
+
+    pub fn get_date_of_birth(&self) -> Option<&chrono::DateTime<chrono::Utc>> {
+        self.date_of_birth.as_ref()
+    }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartIdErrorResponse {
+    #[serde(rename = "type")]
+    pub r#type: String,
+    #[serde(rename = "title")]
+    pub title: String,
+    #[serde(rename = "status")]
+    pub status: i32,
+    #[serde(rename = "detail")]
+    pub detail: String,
+    #[serde(rename = "instance", skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
+    #[serde(rename = "properties", skip_serializing_if = "Option::is_none")]
+    pub properties: Option<String>,
+    #[serde(rename = "code")]
+    pub code: i32,
+    #[serde(rename = "message")]
+    pub message: String,
+}
+

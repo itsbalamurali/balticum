@@ -1,11 +1,6 @@
-use crate::smart_id::models::certificate_level::CertificateLevel;
-use crate::smart_id::models::authentication_identity::AuthenticationIdentity;
-use crate::smart_id::models::{
-     CertificateParser, SessionEndResultCode,
-    SmartIdAuthenticationResponse, SmartIdAuthenticationResult, SmartIdAuthenticationResultError,
-};
-use crate::smart_id::utils::certificate_attributes::CertificateAttributes;
-use crate::smart_id::utils::national_identity_number::NationalIdentityNumber;
+use std::fs::read_dir;
+use std::str::FromStr;
+
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use openssl::{
@@ -14,11 +9,14 @@ use openssl::{
     pkey::PKey,
     sign::Verifier,
     stack::Stack,
-    x509::{store::X509StoreBuilder, verify::X509VerifyFlags, X509StoreContext, X509},
+    x509::{store::X509StoreBuilder, verify::X509VerifyFlags, X509, X509StoreContext},
 };
-use std::{fs::read_dir};
-use x509_parser::der_parser::{oid};
+use x509_parser::der_parser::oid;
 use x509_parser::prelude::{FromDer, X509Certificate};
+
+use crate::smart_id::models::{AuthenticationIdentity, CertificateLevel, CertificateParser, SessionEndResultCode, SmartIdAuthenticationResponse, SmartIdAuthenticationResult, SmartIdAuthenticationResultError};
+use crate::smart_id::utils::certificate_attributes::CertificateAttributes;
+use crate::smart_id::utils::national_identity_number::NationalIdentityNumber;
 
 pub struct AuthenticationResponseValidator {
     trusted_ca_certificates: Vec<String>,
@@ -45,7 +43,7 @@ impl AuthenticationResponseValidator {
         self.validate_authentication_response(authentication_response)
             .unwrap();
 
-        let (_,certificate) = X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
+        let (_, certificate) = X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
 
         let mut authentication_result = SmartIdAuthenticationResult::new();
         let identity = self.construct_authentication_identity(
@@ -107,7 +105,7 @@ impl AuthenticationResponseValidator {
         &self,
         authentication_response: &SmartIdAuthenticationResponse,
     ) -> bool {
-        authentication_response.end_result == SessionEndResultCode::OK
+        authentication_response.end_result == SessionEndResultCode::Ok
     }
 
     fn verify_signature(
@@ -136,7 +134,7 @@ impl AuthenticationResponseValidator {
         &self,
         authentication_response: &SmartIdAuthenticationResponse,
     ) -> bool {
-        let cert_level = CertificateLevel::new(&authentication_response.to_owned().certificate_level);
+        let cert_level = CertificateLevel::from_str(&authentication_response.to_owned().certificate_level).unwrap();
         let requested_certificate_level =
             &authentication_response.requested_certificate_level.as_ref().unwrap();
         requested_certificate_level.is_empty() || cert_level.is_equal_or_above(requested_certificate_level.as_str())

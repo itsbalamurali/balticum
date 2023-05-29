@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use x509_parser::parse_x509_certificate;
+
 pub struct CertificateAttributes;
 
 impl CertificateAttributes {
