@@ -1,8 +1,9 @@
 [package]
 name = "baltic-id"
-description = "Smart-ID & Mobile-ID client library for Rust"
+description = "Baltic ID-Card, Smart-ID & Mobile-ID Api client library for Rust"
 version = "0.0.1"
 edition = "2021"
+license-file = "LICENSE"
 
 [lib]
 name = "baltic_id"
