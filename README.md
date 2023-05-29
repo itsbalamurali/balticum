@@ -16,7 +16,7 @@ To use the Baltic ID library crate in your Rust project, add the following line 
 
 ```toml Cargo.toml
 [dependencies]
-baltic-id = "0.1.0"
+baltic-id = "0.0.1"
 ```
 
 Note: This is a basic example demonstrating the usage of Baltic ID. Please refer to the documentation for detailed instructions and additional options.
