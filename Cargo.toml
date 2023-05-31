@@ -3,7 +3,8 @@ name = "baltic-id"
 description = "Baltic ID-Card, Smart-ID & Mobile-ID Api client library for Rust"
 version = "0.0.2"
 edition = "2021"
-license = "MIT License"
+repository = "https://github.com/itsbalamurali/baltic-id-rs"
+license = "The MIT License"
 
 [lib]
 name = "baltic_id"
