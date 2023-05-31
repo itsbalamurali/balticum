@@ -13,7 +13,6 @@ use crate::mobile_id::errors::MobileIdError;
 use crate::mobile_id::errors::MobileIdError::{MidClientOld, MidForbidden, MidInternalError, MidLimitExceeded, MidNoSuitableAccountFound, MidNotMidClient, MidPersonShouldViewAppOrSelfServicePortalNow, MidPhoneAbsent, MidServiceUnavailable, MidSessionTimeout, MidSignatureHashMismatch, MidSimError, MidSystemUnderMaintenance, MidUnauthorized, MidUserCancelled};
 use crate::mobile_id::models::{AuthenticationRequest, AuthenticationResponse, CertificateRequest, CertificateResponse, CertificateResult, SessionStatus, SessionStatusResult};
 use crate::mobile_id::models::SessionStatusState::RUNNING;
-use crate::smart_id::models::SessionStatusRequest;
 
 /// Mobile-ID client.
 pub struct MobileIdClient<'a> {
