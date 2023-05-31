@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
 
-use crate::smart_id::errors::Exception;
-use crate::smart_id::errors::Exception::UnprocessableSmartIdResponseException;
+use crate::smart_id::errors::Sma;
+use crate::smart_id::errors::Sma::UnprocessableSmartIdResponseException;
 use crate::smart_id::models::AuthenticationIdentity;
 
 pub struct NationalIdentityNumber;
@@ -14,7 +14,7 @@ impl NationalIdentityNumber {
     pub fn get_date_of_birth(
         &self,
         authentication_identity: &AuthenticationIdentity,
-    ) -> Result<Option<DateTime<Utc>>, Exception> {
+    ) -> Result<Option<DateTime<Utc>>, Sma> {
         let identity_number = authentication_identity.get_identity_code();
         match authentication_identity
             .get_country()
@@ -33,7 +33,7 @@ impl NationalIdentityNumber {
     fn parse_ee_lt_date_of_birth(
         &self,
         ee_or_lt_national_identity_number: &str,
-    ) -> Result<Option<DateTime<Utc>>, Exception> {
+    ) -> Result<Option<DateTime<Utc>>, Sma> {
         let birth_day = &ee_or_lt_national_identity_number[5..7];
         let birth_month = &ee_or_lt_national_identity_number[3..5];
         let birth_year_two_digit = &ee_or_lt_national_identity_number[1..3];
@@ -63,7 +63,7 @@ impl NationalIdentityNumber {
     fn parse_lv_date_of_birth(
         &self,
         lv_national_identity_number: &str,
-    ) -> Result<Option<DateTime<Utc>>, Exception> {
+    ) -> Result<Option<DateTime<Utc>>, Sma> {
         let birth_day = &lv_national_identity_number[0..2];
         if birth_day == "32" {
             return Ok(None);

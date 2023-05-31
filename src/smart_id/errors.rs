@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum Exception {
+pub enum SmartIdError {
     #[error("Smart-ID service is not available")]
     SmartIdServiceUnavailable,
 

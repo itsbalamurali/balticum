@@ -1,5 +1,4 @@
 use sha2::{Digest, Sha256};
-
 pub struct VerificationCodeCalculator;
 
 impl VerificationCodeCalculator {

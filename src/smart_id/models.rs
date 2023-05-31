@@ -12,8 +12,8 @@ use thiserror::Error;
 use x509_parser::parse_x509_certificate;
 use x509_parser::prelude::X509Certificate;
 
-use crate::smart_id::errors::Exception;
-use crate::smart_id::errors::Exception::{InvalidParametersException, TechnicalError};
+use crate::smart_id::errors::Sma;
+use crate::smart_id::errors::Sma::{InvalidParametersException, TechnicalError};
 use crate::smart_id::verification_code_calculator::VerificationCodeCalculator;
 
 #[derive(Error, Clone, Debug, Serialize, Deserialize)]
@@ -465,7 +465,7 @@ impl Interaction {
         interaction
     }
 
-    pub fn validate(&self) -> Result<(), Exception> {
+    pub fn validate(&self) -> Result<(), Sma> {
         match self.interaction_type {
             InteractionType::DisplayTextAndPIN | InteractionType::VerificationCodeChoice => {
                 if let Some(display_text60) = &self.display_text60 {
@@ -534,7 +534,7 @@ impl SemanticsIdentifier {
         &self.semantics_identifier
     }
 
-    pub fn validate(&self) -> Result<(), Exception> {
+    pub fn validate(&self) -> Result<(), Sma> {
         let regex = regex::Regex::new(r"^[A-Z\:]{5}-[a-zA-Z\d\-]{5,30}$").unwrap();
         if !regex.is_match(&self.semantics_identifier) {
             return Err(InvalidParametersException(format!(
@@ -1013,7 +1013,7 @@ impl SmartIdAuthenticationResponse {
         self.requested_certificate_level = requested_certificate_level;
     }
 
-    pub fn get_value(&self) -> Result<Vec<u8>, Exception> {
+    pub fn get_value(&self) -> Result<Vec<u8>, Sma> {
         match self.value_in_base64.is_empty() {
             true => Err(TechnicalError(
                 "No value in base64 format".to_string(),

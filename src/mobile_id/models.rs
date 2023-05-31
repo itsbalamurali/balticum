@@ -49,11 +49,35 @@ pub struct MobileIdSignature {
 pub struct SessionStatus {
     pub state: SessionStatusState,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<String>,
+    pub result: Option<SessionStatusResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<MobileIdSignature>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cert: Option<String>,
+}
+
+#[derive(Debug, Clone, strum::Display, Copy, PartialEq, Serialize, EnumString, Deserialize)]
+pub enum SessionStatusResult {
+    #[serde(rename = "OK")]
+    Ok,
+    #[serde(rename = "TIMEOUT")]
+    Timeout,
+    #[serde(rename = "NOT_MID_CLIENT")]
+    NotMidClient,
+    #[serde(rename = "PHONE_ABSENT")]
+    PhoneAbsent,
+    #[serde(rename = "SENDING_ERROR")]
+    SendingError,
+    #[serde(rename = "SIM_ERROR")]
+    SimError,
+    #[serde(rename = "DELIVERY_ERROR")]
+    DeliveryError,
+    #[serde(rename = "EXPIRED_TRANSACTION")]
+    ExpiredTransaction,
+    #[serde(rename = "USER_CANCELLED")]
+    UserCancelled,
+    #[serde(rename = "SIGNATURE_HASH_MISMATCH")]
+    SignatureHashMismatch
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, EnumString, Deserialize)]
@@ -101,13 +125,6 @@ impl SessionStatus {
         self.state = state;
     }
 
-    pub fn get_result(&self) -> Option<&str> {
-        self.result.as_deref()
-    }
-
-    pub fn set_result(&mut self, result: Option<String>) {
-        self.result = result;
-    }
 
     pub fn get_signature(&self) -> Option<&MobileIdSignature> {
         self.signature.as_ref()
@@ -130,7 +147,7 @@ impl SessionStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationResponse {
     #[serde(rename = "sessionID")]
     pub session_id: String,
@@ -166,10 +183,10 @@ impl AuthenticationResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CertificateRequest {
-    #[serde(rename = "relyingPartyUUID", skip_serializing_if = "Option::is_none")]
-    pub relying_party_uuid: Option<String>,
-    #[serde(rename = "relyingPartyName", skip_serializing_if = "Option::is_none")]
-    pub relying_party_name: Option<String>,
+    #[serde(rename = "relyingPartyUUID")]
+    pub relying_party_uuid: String,
+    #[serde(rename = "relyingPartyName")]
+    pub relying_party_name: String,
     #[serde(rename = "phoneNumber")]
     pub phone_number: String,
     #[serde(rename = "nationalIdentityNumber")]

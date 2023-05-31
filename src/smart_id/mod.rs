@@ -12,12 +12,13 @@ use std::{
 use reqwest::{Client, Error, StatusCode};
 use crate::{
     smart_id::{
-        errors::Exception,
-        errors::Exception::{DocumentUnusableException, InvalidParametersException, RequiredInteractionNotSupportedByAppException, SessionInProgress, SessionStatusMissingResult, SessionTimeoutException, SmartIdServiceUnavailable, SmartIdUnauthorized, TechnicalError, UserRefusedCertChoiceException, UserRefusedConfirmationMessageException, UserRefusedConfirmationMessageWithVcChoiceException, UserRefusedDisplayTextAndPinException, UserRefusedException, UserRefusedVcChoiceException, UserSelectedWrongVerificationCodeException},
+        errors::SmartIdError,
+        errors::SmartIdError::{DocumentUnusableException, InvalidParametersException, RequiredInteractionNotSupportedByAppException, SessionInProgress, SessionStatusMissingResult, SessionTimeoutException, SmartIdServiceUnavailable, SmartIdUnauthorized, TechnicalError, UserRefusedCertChoiceException, UserRefusedConfirmationMessageException, UserRefusedConfirmationMessageWithVcChoiceException, UserRefusedDisplayTextAndPinException, UserRefusedException, UserRefusedVcChoiceException, UserSelectedWrongVerificationCodeException},
         models::{AuthenticationHash, AuthenticationSessionRequest, AuthenticationSessionResponse, CertificateLevel, HashType, Interaction, SemanticsIdentifier, SessionEndResultCode, SessionStatus, SessionStatusCode, SessionStatusRequest, SignableData, SmartIdAuthenticationResponse, SmartIdErrorResponse}
     }
 };
 
+/// Smart-ID client for authentication and signing.
 pub struct SmartIdClient {
     relying_party_uuid: String,
     relying_party_name: String,
@@ -172,7 +173,7 @@ impl SmartIdClient {
         String::new()
     }
 
-    pub async fn get_authentication_request_status(&self, session_id: String) -> Result<SmartIdAuthenticationResponse, Exception> {
+    pub async fn get_authentication_request_status(&self, session_id: String) -> Result<SmartIdAuthenticationResponse, SmartIdError> {
         let session_status = self.get_session_status(session_id).await.unwrap();
         self.validate_session_status_result(session_status.to_owned()).unwrap();
         if session_status.is_running_state() {
@@ -187,7 +188,7 @@ impl SmartIdClient {
 
     async fn get_authentication_response(
         &self,
-    ) -> Result<AuthenticationSessionResponse, Exception> {
+    ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         self.validate_authentication_request_parameters()?;
         let request = self.create_authentication_session_request(self.relying_party_uuid.clone(), self.relying_party_name.clone());
         if let Some(document_number) = &self.document_number {
@@ -208,7 +209,7 @@ impl SmartIdClient {
         }
     }
 
-    fn validate_authentication_request_parameters(&self) -> Result<(), Exception> {
+    fn validate_authentication_request_parameters(&self) -> Result<(), SmartIdError> {
         if self.document_number.is_none() && self.semantics_identifier.is_none() {
             return Err(InvalidParametersException(
                 "Either document number or semantics identifier must be set".to_string(),
@@ -278,7 +279,7 @@ impl SmartIdClient {
         Ok(())
     }
 
-    fn verify_interactions_if_set(&self) -> Result<(), Exception> {
+    fn verify_interactions_if_set(&self) -> Result<(), SmartIdError> {
         let interactions_order = &self.allowed_interactions_order;
         if interactions_order.is_empty() {
             return Err(InvalidParametersException(
@@ -292,7 +293,7 @@ impl SmartIdClient {
     pub async fn poll_final_session_status(
         &self,
         session_id: String,
-    ) -> Result<SessionStatus, Exception> {
+    ) -> Result<SessionStatus, SmartIdError> {
         let mut session_status: Option<SessionStatus> = None;
         while session_status.is_none()
             || (session_status.is_some() && session_status.as_ref().unwrap().is_running_state())
@@ -309,7 +310,8 @@ impl SmartIdClient {
         self.validate_session_status_result(session_status.unwrap())
     }
 
-    fn validate_session_status(&self, session_status: &SessionStatus) -> Result<(), Exception> {
+    /// Validates session status and returns it if it is valid
+    fn validate_session_status(&self, session_status: &SessionStatus) -> Result<(), SmartIdError> {
         if session_status.signature.is_none() {
             return Err(TechnicalError(
                 "Signature was not present in the response".to_string(),
@@ -323,7 +325,8 @@ impl SmartIdClient {
         Ok(())
     }
 
-    fn validate_session_status_result(&self, session_status: SessionStatus) -> Result<SessionStatus, Exception> {
+    /// Validates session status result and returns it if it is valid
+    fn validate_session_status_result(&self, session_status: SessionStatus) -> Result<SessionStatus, SmartIdError> {
         if session_status.to_owned().is_running_state() {
             return Err(SessionInProgress);
         }
@@ -376,7 +379,7 @@ impl SmartIdClient {
         &self,
         document_number: String,
         request: AuthenticationSessionRequest,
-    ) -> Result<AuthenticationSessionResponse, Exception> {
+    ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         let url = format!(
             "{}/authentication/document/{}",
             self.host_url.trim_end_matches("/"), document_number
@@ -388,7 +391,7 @@ impl SmartIdClient {
         &self,
         semantics_identifier: &SemanticsIdentifier,
         request: AuthenticationSessionRequest,
-    ) -> Result<AuthenticationSessionResponse, Exception> {
+    ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         let url = format!(
             "{}/authentication/etsi/{}",
             self.host_url.trim_end_matches("/"),
@@ -397,7 +400,7 @@ impl SmartIdClient {
         self.post_authentication_request(&url, request).await
     }
 
-    pub async fn get_session_status(&self, session_id: String) -> Result<SessionStatus, Exception> {
+    pub async fn get_session_status(&self, session_id: String) -> Result<SessionStatus, SmartIdError> {
         let mut request = SessionStatusRequest::new(session_id);
         let timeout = self.session_status_response_socket_timeout_ms;
         request.set_session_status_response_socket_timeout_ms(timeout);
@@ -409,6 +412,7 @@ impl SmartIdClient {
         Ok(session_status)
     }
 
+    /// Gets the session status with the given request.
     async fn get_session_status_request(
         &self,
         request: SessionStatusRequest,
@@ -424,11 +428,12 @@ impl SmartIdClient {
         Ok(response)
     }
 
+    /// Initiates a new authentication session with the given request.
     async fn post_authentication_request(
         &self,
         url: &str,
         request: AuthenticationSessionRequest,
-    ) -> Result<AuthenticationSessionResponse, Exception> {
+    ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         println!("Request URL: {}",url);
         println!("Request Payload: {}",serde_json::to_string(&request).unwrap());
         let response = self

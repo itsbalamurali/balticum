@@ -10,54 +10,26 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::mobile_id::errors::MobileIdError;
-use crate::mobile_id::errors::MobileIdError::{MidInternalError, MidNotMidClient, MidServiceUnavailable, MidUnauthorized};
-use crate::mobile_id::models::{AuthenticationRequest, AuthenticationResponse, CertificateRequest, CertificateResponse, CertificateResult, SessionStatus};
+use crate::mobile_id::errors::MobileIdError::{MidClientOld, MidForbidden, MidInternalError, MidLimitExceeded, MidNoSuitableAccountFound, MidNotMidClient, MidPersonShouldViewAppOrSelfServicePortalNow, MidPhoneAbsent, MidServiceUnavailable, MidSessionTimeout, MidSignatureHashMismatch, MidSimError, MidSystemUnderMaintenance, MidUnauthorized, MidUserCancelled};
+use crate::mobile_id::models::{AuthenticationRequest, AuthenticationResponse, CertificateRequest, CertificateResponse, CertificateResult, SessionStatus, SessionStatusResult};
 use crate::mobile_id::models::SessionStatusState::RUNNING;
 use crate::smart_id::models::SessionStatusRequest;
 
-const DEFAULT_POLLING_SLEEP_TIMEOUT_SECONDS: i32 = 1000;
-const RESPONSE_ERROR_CODES: [(i32, &str); 7] = [
-    (503, "Limit exceeded"),
-    (403, "Forbidden!"),
-    (401, "Unauthorized"),
-    (580, "System is under maintenance, retry later"),
-    (480, "The client is old and not supported any more. Relying Party must contact customer support."),
-    (472, "Person should view app or self-service portal now."),
-    (471, "No suitable account of requested type found, but user has some other accounts."),
-];
-
-pub struct MobileIdClient {
+/// Mobile-ID client.
+pub struct MobileIdClient<'a> {
     endpoint_url: String,
-    network_interface: String,
-    relying_party_uuid: String,
-    relying_party_name: String,
     custom_headers: HeaderMap,
-    ssl_pinned_public_keys: Option<Certificate>,
+    ssl_pinned_public_keys: Option<&'a Certificate>,
     polling_sleep_timeout_seconds: i32,
     long_polling_timeout_seconds: i32,
 }
 
-impl MobileIdClient {
-    // async fn send_authentication_request(
-    //     &self,
-    //     request: &AuthenticationRequest,
-    // ) -> Result<String, MobileIdError> {
-    //     let endpoint = "authentication";
-    //     self.send_request(request, endpoint).await
-    // }
-    //
-    // async fn send_certificate_request(
-    //     &self,
-    //     request: &CertificateRequest,
-    // ) -> Result<String, MobileIdError> {
-    //     let endpoint = "certificate";
-    //     self.send_request(request, endpoint).await
-    // }
-    //
+impl <'a> MobileIdClient<'a> {
     fn is_ssl_pinned(&self) -> bool {
         self.ssl_pinned_public_keys.is_some()
     }
 
+    /// Get certificate from MID for Phone.
     pub async fn get_certificate(&self, request: &CertificateRequest) -> Result<CertificateResponse, MobileIdError> {
         println!("Getting certificate for phone number: {:?}", request);
         let url = format!("{}/certificate", self.endpoint_url.trim_end_matches("/"));
@@ -71,7 +43,7 @@ impl MobileIdClient {
                         }
                     }
                 } else {
-                    Err(MidInternalError(format!("MID response {}", response.error.unwrap())))
+                    Err(MidInternalError(format!("MID response {}", response.to_owned().error.unwrap())))
                 }
             }
             Err(error) => {
@@ -81,13 +53,15 @@ impl MobileIdClient {
     }
 
 
+    /// Sends authentication request to MID and returns session ID.
     pub async fn send_authentication_request(&self, request: &AuthenticationRequest) -> Result<AuthenticationResponse, MobileIdError> {
         let url = format!("{}/authentication", self.endpoint_url.clone().trim_end_matches("/"));
         self.post_request::<AuthenticationRequest, AuthenticationResponse>(url.as_str(), request).await
     }
 
-    pub async fn get_authentication_session_status(&self, request: SessionStatusRequest, session_status_response_socket_timeout_ms: Option<u64>) -> Result<SessionStatus, MobileIdError> {
-        let mut url = format!("{}/authentication/session/{}", self.endpoint_url.trim_end_matches("/"), request.session_id);
+    /// Gets the authentication session status.
+    pub async fn get_authentication_session_status(&self, session_id: String, session_status_response_socket_timeout_ms: Option<i32>) -> Result<SessionStatus, MobileIdError> {
+        let mut url = format!("{}/authentication/session/{}", self.endpoint_url.trim_end_matches("/"), session_id);
         let mut query_params = Vec::new();
         if let Some(timeout_ms) = session_status_response_socket_timeout_ms {
             query_params.push(format!("timeoutMs={}", timeout_ms));
@@ -97,29 +71,17 @@ impl MobileIdClient {
             url = format!("{}?{}", url, query_string);
         }
         let session_status = self.get_request::<SessionStatus>(&url).await.unwrap();
-        self.validate_result(session_status.clone());
-        Ok(session_status)
+        self.validate_result(session_status.clone()).unwrap();
+        Ok(session_status.clone())
     }
 
 
+    /// Generic POST request method
     async fn post_request<T, U>(&self, url: &str, body: &T) -> Result<U, MobileIdError> where
-        T: Serialize, U: Serialize + DeserializeOwned {
+        T: Serialize, U: Clone + Serialize + DeserializeOwned +'a {
         let json = serde_json::to_string(body).unwrap();
         println!("POST {} contents: {}", url, json);
-
-        let client = if self.is_ssl_pinned() && self.ssl_pinned_public_keys.is_some() {
-            let http_client = Client::builder()
-                .default_headers(self.custom_headers.clone())
-                .add_root_certificate(self.ssl_pinned_public_keys.clone().unwrap())
-                .build().unwrap();
-            http_client
-        } else {
-            let http_client = Client::builder()
-                .default_headers(self.custom_headers.clone())
-                .build().unwrap();
-            http_client
-        };
-
+        let client = self.build_http_client();
         let request = client
             .post(url)
             .json(body)
@@ -128,27 +90,16 @@ impl MobileIdClient {
 
         let response = client.execute(request).await.map_err(|err| MidInternalError(err.to_string())).unwrap();
         let http_status_code = response.status().as_u16();
-        // let response_text = response.text().await.unwrap();
         let response_json = response.json::<U>().await.unwrap();
-
-        match http_status_code {
-            200 => Ok(response_json),
-            //TODO: 400 is returned when the request is invalid, 405 when the method is not allowed
-            // Figure out how to handle this
-            //400 | 405 => Err(MidInternalError(response_json.get("error").unwrap().to_string())),
-            401 => Err(MidUnauthorized),
-            503 => Err(MidServiceUnavailable),
-            _ => {
-                Err(MidInternalError(format!("Response was '{}', status code was {}", serde_json::to_string(&response_json).unwrap(), http_status_code)))
-            }
-        }
+        self.handle_http_status_code(http_status_code, response_json)
     }
 
-    async fn get_request<U>(&self, url: &str) -> Result<U, MobileIdError> where U: Serialize + DeserializeOwned {
-        let client = if self.is_ssl_pinned() && self.ssl_pinned_public_keys.is_some() {
+    /// Builds HTTP client with or without SSL pinning
+    fn build_http_client(&self) -> Client {
+        if self.is_ssl_pinned() && self.ssl_pinned_public_keys.is_some() {
             let http_client = Client::builder()
                 .default_headers(self.custom_headers.clone())
-                .add_root_certificate(self.ssl_pinned_public_keys.clone().unwrap())
+                .add_root_certificate(self.ssl_pinned_public_keys.clone().unwrap().clone())
                 .build().unwrap();
             http_client
         } else {
@@ -156,7 +107,31 @@ impl MobileIdClient {
                 .default_headers(self.custom_headers.clone())
                 .build().unwrap();
             http_client
-        };
+        }
+    }
+
+    /// Handles HTTP status code and returns either response or error
+    fn handle_http_status_code<U>(&self, http_status_code: u16, response_type: U) -> Result<U, MobileIdError> where U: Clone + ToOwned + Serialize + DeserializeOwned {
+        match http_status_code {
+            200 => Ok(response_type),
+            429 => Err(MidLimitExceeded),
+            403 => Err(MidForbidden),
+            580 => Err(MidSystemUnderMaintenance),
+            480 => Err(MidClientOld),
+            472 => Err(MidPersonShouldViewAppOrSelfServicePortalNow),
+            471 => Err(MidNoSuitableAccountFound),
+            401 => Err(MidUnauthorized),
+            503 => Err(MidServiceUnavailable),
+            400 | 405 => Err(MidInternalError(serde_json::to_value(response_type.clone()).unwrap().get("error").unwrap().to_string())),
+            _ => {
+                Err(MidInternalError(format!("Response was '{}', status code was {}", serde_json::to_string(&response_type).unwrap(), http_status_code)))
+            }
+        }
+    }
+
+    /// Generic GET request method
+    async fn get_request<U>(&self, url: &str) -> Result<U, MobileIdError> where U: Clone + Serialize + DeserializeOwned + 'a {
+        let client = self.build_http_client();
         let request = client
             .get(url)
             .build()
@@ -165,42 +140,17 @@ impl MobileIdClient {
         let response = client.execute(request).await.map_err(|err| MidInternalError(err.to_string())).unwrap();
         let http_status_code = response.status().as_u16();
         let response_json = response.json::<U>().await.unwrap();
-        match http_status_code {
-            200 => Ok(response_json),
-            400 | 405 => Err(MidInternalError(serde_json::to_value(&response_json).unwrap()["error"].to_string())),
-            401 => Err(MidUnauthorized),
-            503 => Err(MidServiceUnavailable),
-            _ => {
-                Err(MidInternalError(format!("Response was '{}', status code was {}", serde_json::to_string(&response_json).unwrap(), http_status_code)))
-            }
-        }
+        self.handle_http_status_code(http_status_code, response_json)
     }
-
-    pub async fn fetch_final_signature_session_status(
-        &self,
-        session_id: String,
-        long_poll_seconds: u64,
-    ) -> SessionStatus {
-        self.fetch_final_session_status(session_id, long_poll_seconds).await
-    }
-
-    pub async fn fetch_final_authentication_session(
-        &self,
-        session_id: String,
-        long_poll_seconds: u64,
-    ) -> SessionStatus {
-        self.fetch_final_session_status(session_id, long_poll_seconds).await
-    }
-
+    /// Fetches final session status. If session is not complete, then polls for session status until it is complete.
     pub async fn fetch_final_session_status(
         &self,
         session_id: String,
-        long_poll_seconds: u64,
     ) -> SessionStatus {
-        let mut session_status = self.poll_session_status(session_id.to_owned(), long_poll_seconds).await.unwrap();
+        let mut session_status = self.poll_session_status(session_id.to_owned()).await.unwrap();
         while session_status.is_complete() || session_status.get_state() == RUNNING
         {
-            session_status = self.poll_session_status(session_id.to_owned(), long_poll_seconds).await.unwrap();
+            session_status = self.poll_session_status(session_id.to_owned()).await.unwrap();
             if session_status.is_complete() {
                 return session_status;
             }
@@ -211,68 +161,53 @@ impl MobileIdClient {
             ));
             thread::sleep(Duration::from_secs(self.polling_sleep_timeout_seconds as u64));
         }
-
-        println!("Got session final session status response");
         session_status.to_owned().clone()
     }
 
 
+    /// Polls for session status
     async fn poll_session_status(
         &self,
         session_id: String,
-        long_poll_seconds: u64,
     ) -> Result<SessionStatus, MobileIdError> {
         println!("Polling session status");
-        let request = self.create_session_status_request(session_id, long_poll_seconds);
-        self.get_authentication_session_status(request, Some(10000)).await
+        self.get_authentication_session_status(session_id.to_owned(), Some(self.long_polling_timeout_seconds)).await
     }
 
-    fn create_session_status_request(
-        &self,
-        session_id: String,
-        long_poll_seconds: u64,
-    ) -> SessionStatusRequest {
-        SessionStatusRequest {
-            session_id,
-            session_status_response_socket_timeout_ms: long_poll_seconds,
-            network_interface: "".to_string(),
-        }
-    }
-
-    fn validate_result(&self, session_status: SessionStatus) {
-        let result = session_status.get_result();
+    /// Validates session status result
+    fn validate_result(&self, session_status: SessionStatus) -> Result<SessionStatusResult,MobileIdError> {
+        let result = session_status.result;
         if result.is_none() {
-            println!("Result is missing in the session status response");
-            panic!("Result is missing in the session status response");
+            return  Err(MidInternalError("Result is missing in the session status response".to_string()));
         } else {
-            let result = result.unwrap().to_uppercase();
-            match result.as_str() {
-                "OK" => return,
-                "TIMEOUT" | "EXPIRED_TRANSACTION" => {
+            let result = result.unwrap();
+            match result {
+                SessionStatusResult::Ok => Ok(result),
+                SessionStatusResult::Timeout | SessionStatusResult::ExpiredTransaction => {
                     println!("Session timeout");
-                    panic!("Session timeout");
+                    Err(MidSessionTimeout)
                 }
-                "NOT_MID_CLIENT" => {
+                SessionStatusResult::NotMidClient => {
                     println!("User is not Mobile-ID client");
-                    panic!("User is not Mobile-ID client");
+                    Err(MidNotMidClient("User is not Mobile-ID client".to_string()))
                 }
-                "USER_CANCELLED" => {
+                SessionStatusResult::UserCancelled => {
                     println!("User cancelled the operation");
-                    panic!("User cancelled the operation");
+                    Err(MidUserCancelled)
                 }
-                "PHONE_ABSENT" => {
+                SessionStatusResult::PhoneAbsent => {
                     println!("Sim not available");
-                    panic!("Sim not available");
+                    Err(MidPhoneAbsent)
                 }
-                "SIGNATURE_HASH_MISMATCH" => {
+                SessionStatusResult::SignatureHashMismatch => {
                     println!("Hash does not match with certificate type");
-                    panic!("Hash does not match with certificate type");
+                    Err(MidSignatureHashMismatch)
                 }
-                "SIM_ERROR" | "DELIVERY_ERROR" => {
+                SessionStatusResult::SimError | SessionStatusResult::DeliveryError => {
                     println!("SMS sending or SIM error");
-                    panic!("SMS sending or SIM error");
+                    Err(MidSimError)
                 }
-                _ => panic!("MID returned error code '{}'", result),
+                _ => Err(MidInternalError(format!("Unknown error: {}", result))),
             }
         }
     }
