@@ -1,9 +1,10 @@
 [package]
-name = "baltic-id"
-description = "Baltic ID-Card, Smart-ID & Mobile-ID Api client library for Rust"
+name = "e-baltica"
+description = "Baltic E-Services library for Rust"
 version = "0.0.2"
 edition = "2021"
 repository = "https://github.com/itsbalamurali/baltic-id-rs"
+publish = false
 license = "MIT"
 
 [lib]
@@ -12,7 +13,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json","gzip"] }
 strum = { version = "0.24", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,3 +28,5 @@ regex = "1"
 anyhow = "1"
 base64 = "0.21.1"
 tokio = { version = "1", features = ["full"] }
+quick-xml = { version = "0.28", features = ["serde","overlapped-lists","async-tokio","serialize"] }
+validator = { version = "0.16", features = ["derive"] }
