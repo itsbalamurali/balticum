@@ -26,7 +26,7 @@ hex = "0.4"
 thiserror = "1"
 regex = "1"
 anyhow = "1"
-base64 = "0.21.1"
+base64 = "0.21.2"
 tokio = { version = "1", features = ["full"] }
 quick-xml = { version = "0.28", features = ["serde","overlapped-lists","async-tokio","serialize"] }
 validator = { version = "0.16", features = ["derive"] }
