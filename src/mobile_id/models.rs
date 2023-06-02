@@ -15,7 +15,6 @@ pub enum Language {
     LAT,
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthenticationRequest {
     #[serde(rename = "relyingPartyUUID", skip_serializing_if = "Option::is_none")]
@@ -35,7 +34,6 @@ pub struct AuthenticationRequest {
     #[serde(rename = "displayTextFormat")]
     pub display_text_format: Option<String>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileIdSignature {
@@ -77,7 +75,7 @@ pub enum SessionStatusResult {
     #[serde(rename = "USER_CANCELLED")]
     UserCancelled,
     #[serde(rename = "SIGNATURE_HASH_MISMATCH")]
-    SignatureHashMismatch
+    SignatureHashMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, EnumString, Deserialize)]
@@ -100,8 +98,14 @@ impl SessionStatus {
 
         if let Some(values) = values {
             if let Some(signature_values) = values.get("signature").and_then(Value::as_object) {
-                let algorithm = signature_values.get("algorithm").and_then(Value::as_str).unwrap_or("");
-                let value = signature_values.get("value").and_then(Value::as_str).unwrap_or("");
+                let algorithm = signature_values
+                    .get("algorithm")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let value = signature_values
+                    .get("value")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 let signature = MobileIdSignature {
                     value_in_base64: value.to_string(),
                     algorithm_name: algorithm.to_string(),
@@ -111,7 +115,9 @@ impl SessionStatus {
         }
 
         if session_status.cert.is_none() {
-            return Err(MissingOrInvalidParameter("Certificate must be set.".to_string()));
+            return Err(MissingOrInvalidParameter(
+                "Certificate must be set.".to_string(),
+            ));
         }
 
         Ok(session_status)
@@ -125,7 +131,6 @@ impl SessionStatus {
         self.state = state;
     }
 
-
     pub fn get_signature(&self) -> Option<&MobileIdSignature> {
         self.signature.as_ref()
     }
@@ -135,7 +140,9 @@ impl SessionStatus {
     }
 
     pub fn get_cert(&self) -> Result<&str, MobileIdError> {
-        self.cert.as_deref().ok_or_else(|| MissingOrInvalidParameter("Certificate must be set.".to_string()))
+        self.cert
+            .as_deref()
+            .ok_or_else(|| MissingOrInvalidParameter("Certificate must be set.".to_string()))
     }
 
     pub fn set_cert(&mut self, cert: Option<String>) {
@@ -157,7 +164,8 @@ pub struct AuthenticationResponse {
 
 impl AuthenticationResponse {
     pub fn new(response_json: &serde_json::Value) -> Self {
-        let session_id = response_json["sessionID"].as_str()
+        let session_id = response_json["sessionID"]
+            .as_str()
             .or_else(|| response_json["sessionId"].as_str())
             .unwrap_or_default()
             .to_string();

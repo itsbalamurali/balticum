@@ -1,8 +1,8 @@
+use crate::e_invoice::estonia::EInvoice;
 use reqwest::header::HeaderMap;
 use reqwest::Response;
-use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
-use crate::e_invoice::estonia::EInvoice;
+use serde::{Deserialize, Serialize};
 
 pub struct BillBerryApiClient {
     api_id: String,
@@ -19,58 +19,143 @@ impl BillBerryApiClient {
         }
     }
 
-    pub async fn get_e_invoice(&self, invoice_id: &str) -> Result<BillBerryReceivedInvoice,reqwest::Error> {
+    pub async fn get_e_invoice(
+        &self,
+        invoice_id: &str,
+    ) -> Result<BillBerryReceivedInvoice, BillBerryErrorResponse> {
         let mut headers = HeaderMap::new();
-        headers.insert("Accept", "application/vnd.billberry.invoice+json; v=1".parse().unwrap());
-        let resp = self.http_get(&format!("{}/invoices/{}", self.api_url, invoice_id),headers).await.unwrap();
-        resp.json().await
+        headers.insert(
+            "Accept",
+            "application/vnd.billberry.invoice+json; v=1"
+                .parse()
+                .unwrap(),
+        );
+        let resp = self
+            .http_get(
+                &format!("{}/invoices/{}", self.api_url, invoice_id),
+                headers,
+            )
+            .await
+            .unwrap();
+        self.handle_error::<BillBerryReceivedInvoice>(resp).await
     }
 
     pub async fn get_e_invoice_xml(&self, invoice_id: &str) -> EInvoice {
         let mut headers = HeaderMap::new();
         headers.insert("Accept", "application/xml".parse().unwrap());
-        let resp = self.http_get(&format!("{}/invoices/{}.xml", self.api_url, invoice_id),headers).await.unwrap();
+        let resp = self
+            .http_get(
+                &format!("{}/invoices/{}.xml", self.api_url, invoice_id),
+                headers,
+            )
+            .await
+            .unwrap();
         quick_xml::de::from_str::<EInvoice>(&resp.text().await.unwrap()).unwrap()
     }
 
-    pub async fn get_received_e_invoices(&self) -> Result<Vec<BillBerryReceivedInvoice>,reqwest::Error>  {
+    pub async fn get_received_e_invoices(
+        &self,
+    ) -> Result<Vec<BillBerryReceivedInvoice>, reqwest::Error> {
         let mut headers = HeaderMap::new();
-        headers.insert("Accept", "application/vnd.billberry.invoice+json; v=1".parse().unwrap());
-        let resp = self.http_get(&format!("{}/invoices/received", self.api_url),headers).await.unwrap();
+        headers.insert(
+            "Accept",
+            "application/vnd.billberry.invoice+json; v=1"
+                .parse()
+                .unwrap(),
+        );
+        let resp = self
+            .http_get(&format!("{}/invoices/received", self.api_url), headers)
+            .await
+            .unwrap();
         resp.json::<Vec<BillBerryReceivedInvoice>>().await
     }
 
-    pub async fn send_e_invoice(&self, invoice: &EInvoice, send_immediately: bool) -> Result<BillBerryInvoiceSentResponse,reqwest::Error> {
+    pub async fn send_e_invoice(
+        &self,
+        invoice: &EInvoice,
+        send_immediately: bool,
+    ) -> Result<BillBerryInvoiceSentResponse, reqwest::Error> {
         let request = quick_xml::se::to_string(invoice).unwrap();
         let mut headers = HeaderMap::new();
-        headers.insert("Accept", "application/vnd.billberry.invoice+json; v=1".parse().unwrap());
+        headers.insert(
+            "Accept",
+            "application/vnd.billberry.invoice+json; v=1,application/vnd.billberry.error+json; v=1"
+                .parse()
+                .unwrap(),
+        );
         headers.insert("Content-Type", "application/xml".parse().unwrap());
         if send_immediately {
             headers.insert("X-Send", "immediately".parse().unwrap());
         }
-        self.http_post::<BillBerryInvoiceSentResponse>(&format!("{}/invoices", self.api_url),request,headers).await
+        self.http_post::<BillBerryInvoiceSentResponse>(
+            &format!("{}/invoices", self.api_url),
+            request,
+            headers,
+        )
+        .await
     }
 
-    async fn http_get(&self, url: &str, headers: HeaderMap) -> Result<Response,reqwest::Error> {
+    async fn http_get(&self, url: &str, headers: HeaderMap) -> Result<Response, reqwest::Error> {
         reqwest::Client::new()
             .get(url)
             .headers(headers)
             .basic_auth(self.api_id.clone(), Some(self.api_key.clone()))
-            .send().await
+            .send()
+            .await
     }
 
-    async fn http_post<R>(&self, url: &str, body: String, headers: HeaderMap) -> Result<R,reqwest::Error> where R: DeserializeOwned {
+    async fn http_post<R>(
+        &self,
+        url: &str,
+        body: String,
+        headers: HeaderMap,
+    ) -> Result<R, reqwest::Error>
+    where
+        R: DeserializeOwned,
+    {
         let response = reqwest::Client::new()
             .post(url)
             .headers(headers)
             .body(body)
-            .basic_auth(self.api_id.clone(), Some(self.api_key.clone())).send().await.unwrap();
+            .basic_auth(self.api_id.clone(), Some(self.api_key.clone()))
+            .send()
+            .await
+            .unwrap();
         let json = response.json::<R>().await.unwrap();
         Ok(json)
     }
+
+    async fn handle_error<R>(&self, response: Response) -> Result<R, BillBerryErrorResponse>
+    where
+        R: DeserializeOwned,
+    {
+        if response.status().is_success() {
+            let content_type = response
+                .headers()
+                .get("Content-Type")
+                .unwrap()
+                .to_str()
+                .unwrap();
+            if content_type == "application/xml" {
+                let xml = response.text().await.unwrap();
+                let invoice = quick_xml::de::from_str::<R>(&xml).unwrap();
+                return Ok(invoice);
+            } else if content_type == "application/vnd.billberry.invoice+json; v=1" {
+                return Ok(response.json::<R>().await.unwrap());
+            }
+            Ok(response.json::<R>().await.unwrap())
+        } else {
+            let error = response.json::<BillBerryErrorResponse>().await.unwrap();
+            Err(error)
+        }
+    }
 }
 
-
+#[derive(Serialize, Deserialize)]
+pub struct BillBerryErrorResponse {
+    pub error: String,
+    pub message: String,
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct BillBerryReceivedInvoice {

@@ -1,4 +1,4 @@
-use chrono::{ NaiveDate};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 pub mod billberry;
@@ -14,7 +14,6 @@ pub struct EInvoice {
     #[serde(rename = "Footer")]
     pub footer: Footer,
 }
-
 
 #[derive(Serialize, Deserialize)]
 pub struct Footer {
@@ -35,7 +34,6 @@ pub enum Test {
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct Header {
-
     #[serde(rename = "SenderId")]
     pub sender_id: Option<String>,
     #[serde(rename = "ReceiverId")]
@@ -83,7 +81,7 @@ pub struct Invoice {
     #[serde(rename = "@sellerRegnumber")]
     pub seller_reg_number: String,
 
-    #[serde(rename = "Attachment",skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Attachment", skip_serializing_if = "Option::is_none")]
     pub attachment: Option<Attachment>,
 }
 
@@ -105,7 +103,10 @@ pub struct InvoiceInformation {
     #[serde(rename = "InvoiceNumber")]
     pub invoice_number: String,
 
-    #[serde(rename = "PaymentReferenceNumber", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "PaymentReferenceNumber",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub payment_reference_number: Option<String>,
 
     #[serde(rename = "InvoiceDate")]
@@ -144,8 +145,6 @@ pub enum InvoiceInformationType {
     #[serde(rename = "CRE")]
     CRE,
 }
-
-
 
 #[derive(Serialize, Deserialize)]
 pub struct InvoiceItem {
@@ -315,7 +314,6 @@ pub struct LegalAddress {
     country: String,
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct InvoiceSumGroup {
     #[serde(rename = "TotalSum")]
@@ -328,7 +326,7 @@ pub struct InvoiceSumGroup {
     pub vat: Option<InvoiceSumGroupVat>,
 
     #[serde(rename = "InvoiceSum")]
-    pub invoice_sum : Option<f32>,
+    pub invoice_sum: Option<f32>,
 
     #[serde(rename = "PenaltySum")]
     pub penalty_sum: Option<f32>,
@@ -343,9 +341,8 @@ pub struct InvoiceSumGroup {
     pub currency: Option<String>,
 }
 
-
 #[derive(Serialize, Deserialize)]
-pub struct InvoiceSumGroupVat  {
+pub struct InvoiceSumGroupVat {
     #[serde(rename = "VATRate")]
     pub vat_rate: f32,
     #[serde(rename = "VATSum")]
@@ -353,7 +350,7 @@ pub struct InvoiceSumGroupVat  {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct InvoiceSumGroupBalance  {
+pub struct InvoiceSumGroupBalance {
     #[serde(rename = "BalanceDate")]
     pub balance_date: NaiveDate,
     #[serde(rename = "BalanceEnd")]
@@ -405,4 +402,3 @@ pub struct PaymentInfo {
     #[serde(rename = "PayToName")]
     pub pay_to_name: String,
 }
-

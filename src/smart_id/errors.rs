@@ -7,7 +7,7 @@ pub enum SmartIdError {
 
     #[error("Smart-ID unauthorized")]
     SmartIdUnauthorized,
-    
+
     #[error("User selected wrong verification code")]
     UserSelectedWrongVerificationCodeException,
 

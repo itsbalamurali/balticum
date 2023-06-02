@@ -54,7 +54,7 @@ impl NationalIdentityNumber {
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
         )
-            .unwrap();
+        .unwrap();
         let datetime =
             Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))
@@ -89,7 +89,7 @@ impl NationalIdentityNumber {
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
         )
-            .unwrap();
+        .unwrap();
         let datetime =
             Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))

@@ -1,11 +1,11 @@
-use std::error::Error;
-use std::str::FromStr;
 use anyhow::anyhow;
-use base64::Engine;
 use base64::engine::general_purpose;
+use base64::Engine;
 use hex::ToHex;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
+use std::str::FromStr;
 use strum::Display;
 use strum::EnumString;
 use thiserror::Error;
@@ -77,7 +77,6 @@ pub struct AuthenticationCertificate {
     pub purposes: Vec<String>,
     pub extensions: Option<AuthenticationCertificateExtensions>,
 }
-
 
 pub struct AuthenticationCertificateExtensions {
     basic_constraints: String,
@@ -169,11 +168,9 @@ impl AuthenticationHash {
 
     pub fn calculate_hash_in_base64(&self) -> String {
         let hash = self.calculate_hash();
-        general_purpose::STANDARD
-            .encode(hash.as_bytes())
+        general_purpose::STANDARD.encode(hash.as_bytes())
     }
 }
-
 
 #[cfg(test)]
 mod authentication_hash_tests {
@@ -186,7 +183,9 @@ mod authentication_hash_tests {
         let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha512);
         assert_eq!(HashType::Sha512, authentication_hash.get_hash_type());
         assert_eq!(
-            STANDARD.decode(&authentication_hash.calculate_hash_in_base64()).unwrap(),
+            STANDARD
+                .decode(&authentication_hash.calculate_hash_in_base64())
+                .unwrap(),
             authentication_hash.get_hash().as_bytes().to_vec()
         );
     }
@@ -196,7 +195,9 @@ mod authentication_hash_tests {
         let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha384);
         assert_eq!(HashType::Sha384, authentication_hash.get_hash_type());
         assert_eq!(
-            STANDARD.decode(&authentication_hash.calculate_hash_in_base64()).unwrap(),
+            STANDARD
+                .decode(&authentication_hash.calculate_hash_in_base64())
+                .unwrap(),
             authentication_hash.get_hash().as_bytes().to_vec()
         );
     }
@@ -206,14 +207,15 @@ mod authentication_hash_tests {
         let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha256);
         assert_eq!(HashType::Sha256, authentication_hash.get_hash_type());
         assert_eq!(
-            STANDARD.decode(&authentication_hash.calculate_hash_in_base64()).unwrap(),
+            STANDARD
+                .decode(&authentication_hash.calculate_hash_in_base64())
+                .unwrap(),
             authentication_hash.get_hash().as_bytes().to_vec()
         );
     }
 }
 
-
-#[derive(Debug,Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticationSessionRequest {
     #[serde(rename = "relyingPartyUUID")]
@@ -229,7 +231,7 @@ pub struct AuthenticationSessionRequest {
     allowed_interactions_order: Vec<Interaction>,
 }
 
-#[derive(Debug,Clone,Default,PartialEq,EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, EnumString, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum CertificateLevel {
     #[strum(serialize = "QUALIFIED")]
@@ -257,7 +259,12 @@ impl CertificateLevel {
 }
 
 impl AuthenticationSessionRequest {
-    pub fn new(relying_party_uuid: String, relying_party_name: String, hash: String, hash_type: HashType) -> Self {
+    pub fn new(
+        relying_party_uuid: String,
+        relying_party_name: String,
+        hash: String,
+        hash_type: HashType,
+    ) -> Self {
         AuthenticationSessionRequest {
             relying_party_uuid,
             relying_party_name,
@@ -294,7 +301,7 @@ impl AuthenticationSessionRequest {
         self.network_interface.as_deref()
     }
 
-    pub fn set_certificate_level(&mut self, certificate_level:CertificateLevel) {
+    pub fn set_certificate_level(&mut self, certificate_level: CertificateLevel) {
         self.certificate_level = certificate_level;
     }
 
@@ -326,17 +333,13 @@ impl AuthenticationSessionRequest {
         self.nonce.as_deref()
     }
 
-    pub fn set_allowed_interactions_order(
-        &mut self,
-        allowed_interactions_order: Vec<Interaction>,
-    ) {
+    pub fn set_allowed_interactions_order(&mut self, allowed_interactions_order: Vec<Interaction>) {
         self.allowed_interactions_order = allowed_interactions_order;
     }
 
     pub fn get_allowed_interactions_order(&self) -> &Vec<Interaction> {
         &self.allowed_interactions_order
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -364,9 +367,9 @@ impl CertificateParser {
         let end_cert = "-----END CERTIFICATE-----";
 
         if certificate_value.starts_with(begin_cert) && certificate_value.ends_with(end_cert) {
-            let base64_cert = &certificate_value[begin_cert.len()..certificate_value.len() - end_cert.len()];
-            let base64_decoded = general_purpose::STANDARD
-                .decode(base64_cert).unwrap();
+            let base64_cert =
+                &certificate_value[begin_cert.len()..certificate_value.len() - end_cert.len()];
+            let base64_decoded = general_purpose::STANDARD.decode(base64_cert).unwrap();
             Ok(base64_decoded)
         } else {
             Err("Invalid certificate format: missing BEGIN_CERT or END_CERT".into())
@@ -393,7 +396,7 @@ impl DigestCalculator {
     }
 }
 
-#[derive(Display,Default, Debug, Clone, PartialEq, EnumString, Serialize, Deserialize)]
+#[derive(Display, Default, Debug, Clone, PartialEq, EnumString, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[strum(serialize_all = "UPPERCASE")]
 pub enum HashType {
@@ -492,7 +495,7 @@ impl Interaction {
     }
 }
 
-#[derive(Debug, Clone,EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, EnumString, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[strum(serialize_all = "camelCase")]
 pub enum InteractionType {
@@ -1015,16 +1018,12 @@ impl SmartIdAuthenticationResponse {
 
     pub fn get_value(&self) -> Result<Vec<u8>, SmartIdError> {
         match self.value_in_base64.is_empty() {
-            true => Err(TechnicalError(
-                "No value in base64 format".to_string(),
-            )),
+            true => Err(TechnicalError("No value in base64 format".to_string())),
             false => {
-                let decoded =
-                    general_purpose::STANDARD.decode(self.value_in_base64.as_str()).map_err(|_| {
-                        TechnicalError(format!(
-                            "Failed to decode base64: {}",
-                            self.value_in_base64
-                        ))
+                let decoded = general_purpose::STANDARD
+                    .decode(self.value_in_base64.as_str())
+                    .map_err(|_| {
+                        TechnicalError(format!("Failed to decode base64: {}", self.value_in_base64))
                     })?;
                 Ok(decoded)
             }
@@ -1063,7 +1062,6 @@ impl SmartIdAuthenticationResponse {
         self.document_number.as_deref()
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationIdentity {
@@ -1159,7 +1157,6 @@ impl AuthenticationIdentity {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmartIdErrorResponse {
     #[serde(rename = "type")]
@@ -1179,4 +1176,3 @@ pub struct SmartIdErrorResponse {
     #[serde(rename = "message")]
     pub message: String,
 }
-
