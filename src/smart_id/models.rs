@@ -270,7 +270,7 @@ impl AuthenticationSessionRequest {
             relying_party_name,
             network_interface: None,
             certificate_level: CertificateLevel::Qualified,
-            hash: hash,
+            hash,
             hash_type,
             nonce: None,
             allowed_interactions_order: Vec::new(),
@@ -610,9 +610,9 @@ impl SemanticsIdentifierTypes {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCertificate {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) value: Option<String>,
+    pub value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) certificate_level: Option<String>,
+    pub certificate_level: Option<String>,
 }
 
 impl SessionCertificate {

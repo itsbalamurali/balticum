@@ -46,11 +46,14 @@ pub struct SmartIdClient {
 }
 
 impl SmartIdClient {
+    /// Create a new Smart-ID client.
     pub fn new(
         host_url: String,
-        ssl_keys: Vec<String>,
         relying_party_uuid: String,
         relying_party_name: String,
+        authentication_hash: Option<AuthenticationHash>,
+        data_to_sign: Option<SignableData>,
+        ssl_keys: Vec<String>,
     ) -> Self {
         SmartIdClient {
             relying_party_uuid,
@@ -66,8 +69,8 @@ impl SmartIdClient {
             certificate_level: CertificateLevel::Qualified,
             allowed_interactions_order: Vec::new(),
             nonce: None,
-            data_to_sign: None,
-            authentication_hash: None,
+            data_to_sign,
+            authentication_hash,
         }
     }
 
@@ -119,16 +122,6 @@ impl SmartIdClient {
         self
     }
 
-    pub fn with_relying_party_uuid(mut self, relying_party_uuid: String) -> Self {
-        self.relying_party_uuid = relying_party_uuid;
-        self
-    }
-
-    pub fn with_relying_party_name(mut self, relying_party_name: String) -> Self {
-        self.relying_party_name = relying_party_name;
-        self
-    }
-
     pub fn with_network_interface(mut self, network_interface: String) -> Self {
         self.network_interface = network_interface;
         self
@@ -151,23 +144,30 @@ impl SmartIdClient {
         Ok(response.session_id)
     }
 
-    fn create_authentication_session_request(
-        &self,
-        relying_party_uuid: String,
-        relying_party_name: String,
-    ) -> AuthenticationSessionRequest {
+    fn create_authentication_session_request(&self) -> AuthenticationSessionRequest {
         let mut request = AuthenticationSessionRequest::new(
-            relying_party_uuid,
-            relying_party_name,
+            self.relying_party_uuid.clone(),
+            self.relying_party_name.clone(),
             self.get_hash_in_base64(),
             self.get_hash_type(),
         );
         request.set_certificate_level(self.certificate_level.clone());
         request.set_hash_type(self.get_hash_type());
         request.set_hash(self.get_hash_in_base64().as_str());
-        request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
-        request.set_nonce(self.nonce.clone().unwrap());
-        request.set_network_interface(self.network_interface.clone());
+        if self.allowed_interactions_order.len() > 0 {
+            request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
+        } else {
+            request.set_allowed_interactions_order(vec![
+                Interaction::of_type_display_text_and_pin("Hello demo!".to_string()),
+            ]);
+        }
+        // request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
+        if self.nonce.is_some() {
+            request.set_nonce(self.nonce.clone().unwrap());
+        }
+        if !self.network_interface.is_empty() {
+            request.set_network_interface(self.network_interface.clone());
+        }
         request
     }
 
@@ -210,18 +210,14 @@ impl SmartIdClient {
         &self,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         self.validate_authentication_request_parameters()?;
-        let request = self.create_authentication_session_request(
-            self.relying_party_uuid.clone(),
-            self.relying_party_name.clone(),
-        );
         if let Some(document_number) = &self.document_number {
             Ok(self
-                .authenticate_with_document_number(document_number.to_string(), request)
+                .authenticate_with_document_number(document_number.to_string())
                 .await
                 .unwrap())
         } else if let Some(semantics_identifier) = &self.semantics_identifier {
             Ok(self
-                .authenticate_with_semantics_identifier(semantics_identifier, request)
+                .authenticate_with_semantics_identifier(semantics_identifier)
                 .await
                 .unwrap())
         } else {
@@ -396,11 +392,12 @@ impl SmartIdClient {
         }
     }
 
+    /// Authenticate with document number.
     pub async fn authenticate_with_document_number(
         &self,
         document_number: String,
-        request: AuthenticationSessionRequest,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
+        let request = self.create_authentication_session_request();
         let url = format!(
             "{}/authentication/document/{}",
             self.host_url.trim_end_matches("/"),
@@ -409,11 +406,12 @@ impl SmartIdClient {
         self.post_authentication_request(&url, request).await
     }
 
+    /// Authenticate with a semantics identifier.
     pub async fn authenticate_with_semantics_identifier(
         &self,
         semantics_identifier: &SemanticsIdentifier,
-        request: AuthenticationSessionRequest,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
+        let request = self.create_authentication_session_request();
         let url = format!(
             "{}/authentication/etsi/{}",
             self.host_url.trim_end_matches("/"),
@@ -471,15 +469,14 @@ impl SmartIdClient {
         );
         let response = self.client.post(url).json(&request).send().await.unwrap();
         let http_status_code = response.status();
+        let resp_text = response.text().await.unwrap();
+        println!("Response: {}", resp_text);
         return match http_status_code {
-            StatusCode::OK => Ok(response
-                .json::<AuthenticationSessionResponse>()
-                .await
-                .unwrap()),
+            StatusCode::OK => {
+                Ok(serde_json::from_str::<AuthenticationSessionResponse>(&resp_text).unwrap())
+            }
             StatusCode::BAD_REQUEST | StatusCode::METHOD_NOT_ALLOWED => Err(TechnicalError(
-                response
-                    .json::<SmartIdErrorResponse>()
-                    .await
+                serde_json::from_str::<SmartIdErrorResponse>(&resp_text)
                     .unwrap()
                     .message,
             )),
@@ -487,8 +484,7 @@ impl SmartIdClient {
             StatusCode::SERVICE_UNAVAILABLE => Err(SmartIdServiceUnavailable),
             _ => Err(TechnicalError(format!(
                 "Response was '{}', status code was {}",
-                response.text().await.unwrap(),
-                http_status_code
+                resp_text, http_status_code
             ))),
         };
     }
