@@ -37,7 +37,7 @@ pub struct SmartIdClient {
     polling_sleep_timeout_ms: u64,
     session_status_response_socket_timeout_ms: u64,
     data_to_sign: Option<SignableData>,
-    authentication_hash: Option<AuthenticationHash>,
+    authentication_hash: AuthenticationHash,
     semantics_identifier: Option<SemanticsIdentifier>,
     document_number: Option<String>,
     certificate_level: CertificateLevel,
@@ -51,7 +51,7 @@ impl SmartIdClient {
         host_url: String,
         relying_party_uuid: String,
         relying_party_name: String,
-        authentication_hash: Option<AuthenticationHash>,
+        authentication_hash: AuthenticationHash,
         data_to_sign: Option<SignableData>,
         ssl_keys: Vec<String>,
     ) -> Self {
@@ -74,160 +74,119 @@ impl SmartIdClient {
         }
     }
 
-    pub fn with_document_number(mut self, document_number: String) -> Self {
-        self.document_number = Some(document_number);
-        self
-    }
+    // async fn authenticate(
+    //     &self,
+    // ) -> Result<SmartIdAuthenticationResponse, Box<dyn std::error::Error>> {
+    //     let response = self.get_authentication_response().await.unwrap();
+    //     let session_id = response.session_id;
+    //     let session_status = self.poll_final_session_status(session_id).await.unwrap();
+    //     self.validate_session_status(&session_status).unwrap();
+    //     Ok(self.create_smart_id_authentication_response(&session_status))
+    // }
 
-    pub fn with_semantics_identifier(mut self, semantics_identifier: SemanticsIdentifier) -> Self {
-        self.semantics_identifier = Some(semantics_identifier);
-        self
-    }
+    // pub async fn start_authentication_and_return_session_id(
+    //     &self,
+    // ) -> Result<String, Box<dyn std::error::Error>> {
+    //     let response = self.get_authentication_response().await.unwrap();
+    //     Ok(response.session_id)
+    // }
 
-    pub fn with_semantics_identifier_as_string(
-        mut self,
-        semantics_identifier_as_string: String,
-    ) -> Self {
-        self.semantics_identifier = Some(SemanticsIdentifier::from_string(
-            semantics_identifier_as_string,
-        ));
-        self
-    }
-
-    pub fn with_signable_data(mut self, data_to_sign: SignableData) -> Self {
-        self.data_to_sign = Some(data_to_sign);
-        self
-    }
-
-    pub fn with_authentication_hash(mut self, authentication_hash: AuthenticationHash) -> Self {
-        self.authentication_hash = Some(authentication_hash);
-        self
-    }
-
-    pub fn with_certificate_level(mut self, certificate_level: CertificateLevel) -> Self {
-        self.certificate_level = certificate_level;
-        self
-    }
-
-    pub fn with_allowed_interactions_order(
-        mut self,
+    fn create_auth_session_request(
+        &self,
+        auth_hash: AuthenticationHash,
+        nonce: Option<String>,
+        certificate_level: CertificateLevel,
         allowed_interactions_order: Vec<Interaction>,
-    ) -> Self {
-        self.allowed_interactions_order = allowed_interactions_order;
-        self
-    }
-
-    pub fn with_nonce(mut self, nonce: String) -> Self {
-        self.nonce = Some(nonce);
-        self
-    }
-
-    pub fn with_network_interface(mut self, network_interface: String) -> Self {
-        self.network_interface = network_interface;
-        self
-    }
-
-    async fn authenticate(
-        &self,
-    ) -> Result<SmartIdAuthenticationResponse, Box<dyn std::error::Error>> {
-        let response = self.get_authentication_response().await.unwrap();
-        let session_id = response.session_id;
-        let session_status = self.poll_final_session_status(session_id).await.unwrap();
-        self.validate_session_status(&session_status).unwrap();
-        Ok(self.create_smart_id_authentication_response(&session_status))
-    }
-
-    pub async fn start_authentication_and_return_session_id(
-        &self,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let response = self.get_authentication_response().await.unwrap();
-        Ok(response.session_id)
-    }
-
-    fn create_authentication_session_request(&self) -> AuthenticationSessionRequest {
-        let mut request = AuthenticationSessionRequest::new(
-            self.relying_party_uuid.clone(),
-            self.relying_party_name.clone(),
-            self.get_hash_in_base64(),
-            self.get_hash_type(),
-        );
-        request.set_certificate_level(self.certificate_level.clone());
-        request.set_hash_type(self.get_hash_type());
-        request.set_hash(self.get_hash_in_base64().as_str());
-        if self.allowed_interactions_order.len() > 0 {
-            request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
-        } else {
-            request.set_allowed_interactions_order(vec![
-                Interaction::of_type_display_text_and_pin("Hello demo!".to_string()),
-            ]);
+        network_interface: Option<String>,
+    ) -> AuthenticationSessionRequest {
+        AuthenticationSessionRequest {
+            relying_party_uuid: self.relying_party_uuid.clone(),
+            relying_party_name: self.relying_party_name.clone(),
+            hash_type: auth_hash.get_hash_type(),
+            hash: auth_hash.get_hash(),
+            nonce,
+            certificate_level,
+            network_interface,
+            allowed_interactions_order,
         }
-        // request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
-        if self.nonce.is_some() {
-            request.set_nonce(self.nonce.clone().unwrap());
-        }
-        if !self.network_interface.is_empty() {
-            request.set_network_interface(self.network_interface.clone());
-        }
-        request
+
+        //     request.set_certificate_level(self.certificate_level.clone());
+        //     request.set_hash_type(self.get_hash_type());
+        //     request.set_hash(self.get_hash_in_base64().as_str());
+        //     if self.allowed_interactions_order.len() > 0 {
+        //         request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
+        //     } else {
+        //         request.set_allowed_interactions_order(vec![
+        //             Interaction::of_type_display_text_and_pin("Hello demo!".to_string()),
+        //         ]);
+        //     }
+        //     // request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
+        //     if self.nonce.is_some() {
+        //         request.set_nonce(self.nonce.clone().unwrap());
+        //     }
+        //     if !self.network_interface.is_empty() {
+        //         request.set_network_interface(self.network_interface.clone());
+        //     }
+        //     request
     }
 
-    fn get_hash_type(&self) -> HashType {
-        if let Some(hash_type) = &self.authentication_hash {
-            return hash_type.hash_type.clone();
-        } else if let Some(data_to_sign) = &self.data_to_sign {
-            return data_to_sign.hash_type.clone();
-        }
-        HashType::Sha512
-    }
+    // fn get_hash_type(&self) -> HashType {
+    //     if let Some(hash_type) = &self.authentication_hash {
+    //         return hash_type.hash_type.clone();
+    //     } else if let Some(data_to_sign) = &self.data_to_sign {
+    //         return data_to_sign.hash_type.clone();
+    //     }
+    //     HashType::Sha512
+    // }
 
-    fn get_hash_in_base64(&self) -> String {
-        if let Some(authentication_hash) = &self.authentication_hash {
-            return authentication_hash.calculate_hash_in_base64();
-        } else if let Some(data_to_sign) = &self.data_to_sign {
-            return data_to_sign.calculate_hash_in_base64();
-        }
-        String::new()
-    }
+    // fn get_hash_in_base64(&self) -> String {
+    //     if let Some(authentication_hash) = &self.authentication_hash {
+    //         return authentication_hash.calculate_hash_in_base64();
+    //     } else if let Some(data_to_sign) = &self.data_to_sign {
+    //         return data_to_sign.calculate_hash_in_base64();
+    //     }
+    //     String::new()
+    // }
 
     pub async fn get_authentication_request_status(
         &self,
         session_id: String,
-    ) -> Result<SmartIdAuthenticationResponse, SmartIdError> {
+    ) -> Result<SessionStatus, SmartIdError> {
         let session_status = self.get_session_status(session_id).await.unwrap();
         self.validate_session_status_result(session_status.to_owned())
             .unwrap();
         if session_status.is_running_state() {
             let mut authentication_response = SmartIdAuthenticationResponse::new();
             authentication_response.set_state(SessionStatusCode::RUNNING);
-            Ok(authentication_response)
+            Ok(session_status)
         } else {
             self.validate_session_status(&session_status).unwrap();
-            Ok(self.create_smart_id_authentication_response(&session_status))
+            Ok(session_status)
         }
     }
 
-    async fn get_authentication_response(
-        &self,
-    ) -> Result<AuthenticationSessionResponse, SmartIdError> {
-        self.validate_authentication_request_parameters()?;
-        if let Some(document_number) = &self.document_number {
-            Ok(self
-                .authenticate_with_document_number(document_number.to_string())
-                .await
-                .unwrap())
-        } else if let Some(semantics_identifier) = &self.semantics_identifier {
-            Ok(self
-                .authenticate_with_semantics_identifier(semantics_identifier)
-                .await
-                .unwrap())
-        } else {
-            Err(InvalidParametersException(
-                "Either document number or semantics identifier must be set".to_string(),
-            ))
-        }
-    }
+    // async fn get_authentication_response(
+    //     &self,
+    // ) -> Result<AuthenticationSessionResponse, SmartIdError> {
+    //     self.validate_auth_request_parameters()?;
+    //     if let Some(document_number) = &self.document_number {
+    //         Ok(self
+    //             .authenticate_with_document_number(document_number.to_string())
+    //             .await
+    //             .unwrap())
+    //     } else if let Some(semantics_identifier) = &self.semantics_identifier {
+    //         Ok(self
+    //             .authenticate_with_semantics_identifier(semantics_identifier)
+    //             .await
+    //             .unwrap())
+    //     } else {
+    //         Err(InvalidParametersException(
+    //             "Either document number or semantics identifier must be set".to_string(),
+    //         ))
+    //     }
+    // }
 
-    fn validate_authentication_request_parameters(&self) -> Result<(), SmartIdError> {
+    fn validate_auth_request_parameters(&self) -> Result<(), SmartIdError> {
         if self.document_number.is_none() && self.semantics_identifier.is_none() {
             return Err(InvalidParametersException(
                 "Either document number or semantics identifier must be set".to_string(),
@@ -235,12 +194,6 @@ impl SmartIdClient {
         }
 
         self.validate_semantics_identifier_if_set().unwrap();
-
-        if !self.is_signable_data_set() && !self.is_authentication_hash_set() {
-            return Err(InvalidParametersException(
-                "Signable data or hash with hash type must be set".to_string(),
-            ));
-        }
 
         self.verify_interactions_if_set().unwrap();
 
@@ -251,43 +204,40 @@ impl SmartIdClient {
         self.data_to_sign.is_some()
     }
 
-    fn is_authentication_hash_set(&self) -> bool {
-        self.authentication_hash.is_some()
-    }
 
-    fn create_smart_id_authentication_response(
-        &self,
-        session_status: &SessionStatus,
-    ) -> SmartIdAuthenticationResponse {
-        let session_result = session_status.get_result().unwrap();
-        let session_signature = session_status.get_signature().unwrap();
-        let session_certificate = session_status.get_cert().unwrap();
+    // fn create_smart_id_authentication_response(
+    //     &self,
+    //     session_status: &SessionStatus,
+    // ) -> SmartIdAuthenticationResponse {
+    //     let session_result = session_status.get_result().unwrap();
+    //     let session_signature = session_status.get_signature().unwrap();
+    //     let session_certificate = session_status.get_cert().unwrap();
 
-        let mut authentication_response = SmartIdAuthenticationResponse::new();
-        authentication_response.set_end_result(session_result.get_end_result());
-        authentication_response.set_ignored_properties(session_status.ignored_properties.clone());
-        authentication_response.set_signed_data(self.get_data_to_sign().to_string());
-        authentication_response.set_value_in_base64(session_signature.get_value().unwrap());
-        authentication_response.set_algorithm_name(session_signature.get_algorithm().unwrap());
-        authentication_response.set_certificate(session_certificate.get_value().unwrap());
-        authentication_response
-            .set_certificate_level(session_certificate.get_certificate_level().unwrap());
-        authentication_response
-            .set_interaction_flow_used(session_status.interaction_flow_used.clone());
-        authentication_response.set_state(session_status.get_state());
-        authentication_response.set_document_number(session_result.document_number.clone());
-        authentication_response
-    }
+    //     let mut authentication_response = SmartIdAuthenticationResponse::new();
+    //     authentication_response.set_end_result(session_result.get_end_result());
+    //     authentication_response.set_ignored_properties(session_status.ignored_properties.clone());
+    //     authentication_response.set_signed_data(self.get_data_to_sign().to_string());
+    //     authentication_response.set_value_in_base64(session_signature.get_value().unwrap());
+    //     authentication_response.set_algorithm_name(session_signature.get_algorithm().unwrap());
+    //     authentication_response.set_certificate(session_certificate.get_value().unwrap());
+    //     authentication_response
+    //         .set_certificate_level(session_certificate.get_certificate_level().unwrap());
+    //     authentication_response
+    //         .set_interaction_flow_used(session_status.interaction_flow_used.clone());
+    //     authentication_response.set_state(session_status.get_state());
+    //     authentication_response.set_document_number(session_result.document_number.clone());
+    //     authentication_response
+    // }
 
-    fn get_data_to_sign(&self) -> String {
-        if let Some(authentication_hash) = &self.authentication_hash {
-            authentication_hash.data_to_sign.clone()
-        } else if let Some(data_to_sign) = &self.data_to_sign {
-            data_to_sign.data_to_sign.clone()
-        } else {
-            String::new()
-        }
-    }
+    // fn get_data_to_sign(&self) -> String {
+    //     if let Some(authentication_hash) = &self.authentication_hash {
+    //         authentication_hash.data_to_sign.clone()
+    //     } else if let Some(data_to_sign) = &self.data_to_sign {
+    //         data_to_sign.data_to_sign.clone()
+    //     } else {
+    //         String::new()
+    //     }
+    // }
 
     fn validate_semantics_identifier_if_set(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(semantics_identifier) = &self.semantics_identifier {
@@ -396,8 +346,18 @@ impl SmartIdClient {
     pub async fn authenticate_with_document_number(
         &self,
         document_number: String,
+        nonce: Option<String>,
+        certificate_level: CertificateLevel,
+        allowed_interactions_order: Vec<Interaction>,
+        network_interface: Option<String>,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
-        let request = self.create_authentication_session_request();
+        let request = self.create_auth_session_request(
+            self.authentication_hash.clone(),
+            nonce,
+            certificate_level,
+            allowed_interactions_order,
+            network_interface,
+        );
         let url = format!(
             "{}/authentication/document/{}",
             self.host_url.trim_end_matches("/"),
@@ -410,8 +370,19 @@ impl SmartIdClient {
     pub async fn authenticate_with_semantics_identifier(
         &self,
         semantics_identifier: &SemanticsIdentifier,
+        auth_hash: AuthenticationHash,
+        nonce: Option<String>,
+        certificate_level: CertificateLevel,
+        allowed_interactions_order: Vec<Interaction>,
+        network_interface: Option<String>,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
-        let request = self.create_authentication_session_request();
+        let request = self.create_auth_session_request(
+            auth_hash,
+            nonce,
+            certificate_level,
+            allowed_interactions_order,
+            network_interface,
+        );
         let url = format!(
             "{}/authentication/etsi/{}",
             self.host_url.trim_end_matches("/"),
@@ -446,6 +417,7 @@ impl SmartIdClient {
             self.host_url.trim_end_matches("/"),
             request.session_id
         );
+        println!("Request URL: {}", url);
         let response = self
             .client
             .get(url)
@@ -453,6 +425,7 @@ impl SmartIdClient {
             .await?
             .json::<SessionStatus>()
             .await?;
+        println!("Response: {:?}", response);
         Ok(response)
     }
 

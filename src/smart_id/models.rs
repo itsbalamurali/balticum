@@ -4,6 +4,7 @@ use base64::Engine;
 use hex::ToHex;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::error::Error;
 use std::str::FromStr;
 use strum::Display;
@@ -75,20 +76,20 @@ pub struct AuthenticationCertificate {
     pub signature_type_ln: String,
     pub signature_type_nid: i32,
     pub purposes: Vec<String>,
-    pub extensions: Option<AuthenticationCertificateExtensions>,
+    // pub extensions: Option<AuthenticationCertificateExtensions>,
 }
 
-pub struct AuthenticationCertificateExtensions {
-    basic_constraints: String,
-    key_usage: String,
-    certificate_policies: String,
-    subject_key_identifier: String,
-    qc_statements: String,
-    authority_key_identifier: String,
-    authority_info_access: String,
-    extended_key_usage: String,
-    subject_alt_name: String,
-}
+// pub struct AuthenticationCertificateExtensions {
+//     basic_constraints: String,
+//     key_usage: String,
+//     certificate_policies: String,
+//     subject_key_identifier: String,
+//     qc_statements: String,
+//     authority_key_identifier: String,
+//     authority_info_access: String,
+//     extended_key_usage: String,
+//     subject_alt_name: String,
+// }
 
 pub struct AuthenticationCertificateIssuer {
     pub c: String,
@@ -114,61 +115,60 @@ pub struct AuthenticationCertificateSubject {
     pub serial_number: String,
 }
 
+/// Authentication hash.
+#[derive(Debug, Clone)]
 pub struct AuthenticationHash {
-    pub data_to_sign: String,
-    pub hash: String,
-    pub hash_type: HashType,
+    data_to_sign: String,
+    hash: String,
+    hash_type: HashType,
 }
 
 impl AuthenticationHash {
-    pub fn generate_random_hash(hash_type: HashType) -> Self {
-        let random_bytes = Self::get_random_bytes();
+    pub fn new(data_to_sign: String) -> Self {
+        Self::generate_hash(data_to_sign, HashType::Sha256)
+    }
+
+    pub fn new_random_hash(hash_type: HashType) -> Self {
+        let data_to_sign = Self::get_random_bytes().encode_hex::<String>();
+        Self::generate_hash(data_to_sign, hash_type)
+    }
+
+    fn generate_hash(data_to_sign: String, hash_type: HashType) -> Self {
         let mut authentication_hash = AuthenticationHash {
-            data_to_sign: random_bytes.encode_hex::<String>(),
+            data_to_sign,
             hash: String::new(),
             hash_type,
         };
-        authentication_hash.set_hash(&authentication_hash.calculate_hash());
+        authentication_hash.hash = authentication_hash.calculate_hash_in_base64();
         authentication_hash
     }
 
-    fn calculate_hash(&self) -> String {
-        return DigestCalculator::calculate_digest(&self.data_to_sign, self.hash_type.clone());
-    }
-
-    pub fn generate() -> Self {
-        Self::generate_random_hash(HashType::Sha512)
-    }
-
+    /// Generates random bytes.
     fn get_random_bytes() -> Vec<u8> {
-        let mut random_bytes = vec![0u8; 64];
+        let mut random_bytes = vec![0u8; 16];
         rand::thread_rng().fill_bytes(&mut random_bytes);
         random_bytes
     }
 
+    /// Returns the hash type.
     pub fn get_hash_type(&self) -> HashType {
         self.hash_type.clone()
     }
 
-    pub fn get_data_to_sign(&self) -> &str {
-        &self.data_to_sign
+    /// Returns the hash.
+    pub fn get_hash(&self) -> String {
+        self.hash.clone()
     }
 
-    pub fn set_hash(&mut self, hash: &str) {
-        self.hash = hash.to_string();
-    }
-
-    pub fn get_hash(&self) -> &str {
-        &self.hash
-    }
-
-    pub fn calculate_verification_code(&self) -> String {
+    /// Calculates the verification code for the hash.
+    pub fn get_verification_code(&self) -> String {
         VerificationCodeCalculator::calculate(&self.hash)
     }
 
-    pub fn calculate_hash_in_base64(&self) -> String {
-        let hash = self.calculate_hash();
-        general_purpose::STANDARD.encode(hash.as_bytes())
+    /// Calculates the hash of the data to sign and encodes it in base64.
+    fn calculate_hash_in_base64(&self) -> String {
+        let hash = DigestCalculator::calculate_digest(&self.data_to_sign, self.hash_type.clone());
+        general_purpose::STANDARD.encode(hash)
     }
 }
 
@@ -180,7 +180,7 @@ mod authentication_hash_tests {
 
     #[test]
     fn generate_random_hash_of_type_sha512() {
-        let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha512);
+        let authentication_hash = AuthenticationHash::new_random_hash(HashType::Sha512);
         assert_eq!(HashType::Sha512, authentication_hash.get_hash_type());
         assert_eq!(
             STANDARD
@@ -192,7 +192,7 @@ mod authentication_hash_tests {
 
     #[test]
     fn generate_random_hash_of_type_sha384() {
-        let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha384);
+        let authentication_hash = AuthenticationHash::new_random_hash(HashType::Sha384);
         assert_eq!(HashType::Sha384, authentication_hash.get_hash_type());
         assert_eq!(
             STANDARD
@@ -204,7 +204,7 @@ mod authentication_hash_tests {
 
     #[test]
     fn generate_random_hash_of_type_sha256() {
-        let authentication_hash = AuthenticationHash::generate_random_hash(HashType::Sha256);
+        let authentication_hash = AuthenticationHash::new_random_hash(HashType::Sha256);
         assert_eq!(HashType::Sha256, authentication_hash.get_hash_type());
         assert_eq!(
             STANDARD
@@ -219,16 +219,16 @@ mod authentication_hash_tests {
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticationSessionRequest {
     #[serde(rename = "relyingPartyUUID")]
-    relying_party_uuid: String,
-    relying_party_name: String,
+    pub relying_party_uuid: String,
+    pub relying_party_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    network_interface: Option<String>,
-    certificate_level: CertificateLevel,
-    hash: String,
-    hash_type: HashType,
+    pub network_interface: Option<String>,
+    pub certificate_level: CertificateLevel,
+    pub hash: String,
+    pub hash_type: HashType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    nonce: Option<String>,
-    allowed_interactions_order: Vec<Interaction>,
+    pub nonce: Option<String>,
+    pub allowed_interactions_order: Vec<Interaction>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, EnumString, Serialize, Deserialize)]
@@ -380,28 +380,27 @@ impl CertificateParser {
 pub struct DigestCalculator;
 
 impl DigestCalculator {
-    pub fn calculate_digest(data_to_digest: &str, hash_type: HashType) -> String {
-        use openssl::hash::{hash, MessageDigest};
-        let message_digest = match hash_type {
-            HashType::Md5 => MessageDigest::md5(),
-            HashType::Sha1 => MessageDigest::sha1(),
-            HashType::Sha256 => MessageDigest::sha256(),
-            HashType::Sha384 => MessageDigest::sha384(),
-            HashType::Sha512 => MessageDigest::sha512(),
-            _ => panic!("Unsupported hash type: {}", hash_type),
-        };
-        hash(message_digest, data_to_digest.as_bytes())
-            .unwrap()
-            .encode_hex()
+    pub fn calculate_digest(data_to_digest: &str, hash_type: HashType) -> Vec<u8> {
+        if hash_type == HashType::Sha256 {
+           return  Sha256::digest(data_to_digest.as_bytes()).to_vec();
+        }
+        if hash_type == HashType::Sha384 {
+           return  Sha384::digest(data_to_digest.as_bytes()).to_vec();
+        }
+        if hash_type == HashType::Sha512 {
+            return Sha512::digest(data_to_digest.as_bytes()).to_vec();
+        }
+         panic!("Unsupported hash type: {}", hash_type);
     }
+
 }
 
 #[derive(Display, Default, Debug, Clone, PartialEq, EnumString, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[strum(serialize_all = "UPPERCASE")]
 pub enum HashType {
-    Md5,
-    Sha1,
+    // Md5,
+    // Sha1,
     Sha256,
     Sha384,
     #[default]
@@ -611,7 +610,7 @@ impl SemanticsIdentifierTypes {
 pub struct SessionCertificate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename="certificateLevel",skip_serializing_if = "Option::is_none")]
     pub certificate_level: Option<String>,
 }
 
@@ -678,26 +677,11 @@ pub enum SessionEndResultCode {
     WrongVC,
 }
 
-// impl SessionEndResultCode {
-//     pub const OK: &'static str = "OK";
-//     pub const USER_REFUSED: &'static str = "USER_REFUSED";
-//     pub const TIMEOUT: &'static str = "TIMEOUT";
-//     pub const DOCUMENT_UNUSABLE: &'static str = "DOCUMENT_UNUSABLE";
-//     pub const REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP: &'static str =
-//         "REQUIRED_INTERACTION_NOT_SUPPORTED_BY_APP";
-//     pub const USER_REFUSED_DISPLAYTEXTANDPIN: &'static str = "USER_REFUSED_DISPLAYTEXTANDPIN";
-//     pub const USER_REFUSED_VC_CHOICE: &'static str = "USER_REFUSED_VC_CHOICE";
-//     pub const USER_REFUSED_CONFIRMATIONMESSAGE: &'static str = "USER_REFUSED_CONFIRMATIONMESSAGE";
-//     pub const USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE: &'static str =
-//         "USER_REFUSED_CONFIRMATIONMESSAGE_WITH_VC_CHOICE";
-//     pub const USER_REFUSED_CERT_CHOICE: &'static str = "USER_REFUSED_CERT_CHOICE";
-//     pub const WRONG_VC: &'static str = "WRONG_VC";
-// }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionResult {
+    #[serde(rename = "endResult")]
     pub end_result: SessionEndResultCode,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename= "documentNumber" ,skip_serializing_if = "Option::is_none")]
     pub document_number: Option<String>,
 }
 
@@ -724,7 +708,9 @@ impl SessionResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSignature {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub algorithm: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
 }
 
@@ -756,10 +742,15 @@ impl SessionSignature {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStatus {
     pub state: SessionStatusCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<SessionResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<SessionSignature>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cert: Option<SessionCertificate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ignored_properties: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub interaction_flow_used: Option<String>,
 }
 
@@ -829,6 +820,7 @@ impl SessionStatus {
 }
 
 #[derive(Display, Clone, Debug, PartialEq, EnumString, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum SessionStatusCode {
     RUNNING,
     COMPLETE,
@@ -897,7 +889,7 @@ impl SignableData {
     }
 
     pub fn calculate_hash(&self) -> Vec<u8> {
-        DigestCalculator::calculate_digest(&self.data_to_sign, self.hash_type.clone()).into_bytes()
+        DigestCalculator::calculate_digest(&self.data_to_sign, self.hash_type.clone()).to_vec()
     }
 
     pub fn set_hash_type(&mut self, hash_type: HashType) {

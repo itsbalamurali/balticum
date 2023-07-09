@@ -1,6 +1,7 @@
-mod errors;
-mod models;
+pub mod errors;
+pub mod models;
 
+use std::fmt::Debug;
 use std::thread;
 use std::time::Duration;
 
@@ -16,24 +17,45 @@ use crate::mobile_id::errors::MobileIdError::{
     MidServiceUnavailable, MidSessionTimeout, MidSignatureHashMismatch, MidSimError,
     MidSystemUnderMaintenance, MidUnauthorized, MidUserCancelled,
 };
-use crate::mobile_id::models::SessionStatusState::RUNNING;
+use crate::mobile_id::models::SessionStatusState::{COMPLETE, RUNNING};
 use crate::mobile_id::models::{
     AuthenticationRequest, AuthenticationResponse, CertificateRequest, CertificateResponse,
     CertificateResult, SessionStatus, SessionStatusResult,
 };
+use crate::smart_id::models::{AuthenticationHash, HashType};
+
+use self::models::{DisplayTextFormat, Language};
 
 /// Mobile-ID client.
 pub struct MobileIdClient<'a> {
+    /// Mobile-ID API endpoint URL.
     endpoint_url: String,
+    /// Relying party UUID.
+    relying_party_uuid: String,
+    /// Relying party name.
+    relying_party_name: String,
+    /// Custom headers to be sent with each request.
     custom_headers: HeaderMap,
+    /// SSL pinned public keys.
     ssl_pinned_public_keys: Option<&'a Certificate>,
+    /// Timeout for polling sleep.
     polling_sleep_timeout_seconds: i32,
+    /// Timeout for long polling.
     long_polling_timeout_seconds: i32,
 }
 
 impl<'a> MobileIdClient<'a> {
-    fn is_ssl_pinned(&self) -> bool {
-        self.ssl_pinned_public_keys.is_some()
+    /// Creates new Mobile-ID client.
+    pub fn new(api_url: String, relying_party_uuid: String, relying_party_name: String) -> Self {
+        MobileIdClient {
+            endpoint_url: api_url,
+            relying_party_uuid,
+            relying_party_name,
+            custom_headers: HeaderMap::new(),
+            ssl_pinned_public_keys: None,
+            polling_sleep_timeout_seconds: 600,
+            long_polling_timeout_seconds: 600,
+        }
     }
 
     /// Get certificate from MID for Phone.
@@ -69,13 +91,59 @@ impl<'a> MobileIdClient<'a> {
     /// Sends authentication request to MID and returns session ID.
     pub async fn send_authentication_request(
         &self,
-        request: &AuthenticationRequest,
+        phone_number: String,
+        national_identity_number: String,
+        auth_hash: AuthenticationHash,
+        language: Language,
+        display_text: String,
+        display_text_format: DisplayTextFormat,
     ) -> Result<AuthenticationResponse, MobileIdError> {
+        let request = AuthenticationRequest {
+            relying_party_uuid: self.relying_party_uuid.clone(),
+            relying_party_name: self.relying_party_name.clone(),
+            phone_number,
+            national_identity_number,
+            hash: auth_hash.get_hash(),
+            hash_type: auth_hash.get_hash_type(),
+            language,
+            display_text,
+            display_text_format,
+        };
         let url = format!(
             "{}/authentication",
             self.endpoint_url.clone().trim_end_matches("/")
         );
-        self.post_request::<AuthenticationRequest, AuthenticationResponse>(url.as_str(), request)
+        self.post_request::<AuthenticationRequest, AuthenticationResponse>(url.as_str(), &request)
+            .await
+    }
+
+    /// Send signature request to MID and returns session ID.
+    pub async fn send_signature_request(
+        &self,
+        phone_number: String,
+        national_identity_number: String,
+        hash: String,
+        hash_type: HashType,
+        language: Language,
+        display_text: String,
+        display_text_format: DisplayTextFormat,
+    ) -> Result<AuthenticationResponse, MobileIdError> {
+        let request = AuthenticationRequest {
+            relying_party_uuid: self.relying_party_uuid.clone(),
+            relying_party_name: self.relying_party_name.clone(),
+            phone_number,
+            national_identity_number,
+            hash,
+            hash_type,
+            language,
+            display_text,
+            display_text_format,
+        };
+        let url = format!(
+            "{}/signature",
+            self.endpoint_url.clone().trim_end_matches("/")
+        );
+        self.post_request::<AuthenticationRequest, AuthenticationResponse>(url.as_str(), &request)
             .await
     }
 
@@ -87,6 +155,30 @@ impl<'a> MobileIdClient<'a> {
     ) -> Result<SessionStatus, MobileIdError> {
         let mut url = format!(
             "{}/authentication/session/{}",
+            self.endpoint_url.trim_end_matches("/"),
+            session_id
+        );
+        let mut query_params = Vec::new();
+        if let Some(timeout_ms) = session_status_response_socket_timeout_ms {
+            query_params.push(format!("timeoutMs={}", timeout_ms));
+        }
+        if !query_params.is_empty() {
+            let query_string = query_params.join("&");
+            url = format!("{}?{}", url, query_string);
+        }
+        let session_status = self.get_request::<SessionStatus>(&url).await.unwrap();
+        self.validate_result(session_status.clone()).unwrap();
+        Ok(session_status.clone())
+    }
+
+    /// Gets the signature session status.
+    pub async fn get_signature_session_status(
+        &self,
+        session_id: String,
+        session_status_response_socket_timeout_ms: Option<i32>,
+    ) -> Result<SessionStatus, MobileIdError> {
+        let mut url = format!(
+            "{}/signature/session/{}",
             self.endpoint_url.trim_end_matches("/"),
             session_id
         );
@@ -126,20 +218,14 @@ impl<'a> MobileIdClient<'a> {
 
     /// Builds HTTP client with or without SSL pinning
     fn build_http_client(&self) -> Client {
-        if self.is_ssl_pinned() && self.ssl_pinned_public_keys.is_some() {
-            let http_client = Client::builder()
-                .default_headers(self.custom_headers.clone())
+        let http_client = Client::builder().default_headers(self.custom_headers.clone());
+        if self.ssl_pinned_public_keys.is_some() {
+            return http_client
                 .add_root_certificate(self.ssl_pinned_public_keys.clone().unwrap().clone())
                 .build()
                 .unwrap();
-            http_client
-        } else {
-            let http_client = Client::builder()
-                .default_headers(self.custom_headers.clone())
-                .build()
-                .unwrap();
-            http_client
         }
+        return http_client.build().unwrap();
     }
 
     /// Handles HTTP status code and returns either response or error
@@ -179,7 +265,7 @@ impl<'a> MobileIdClient<'a> {
     /// Generic GET request method
     async fn get_request<U>(&self, url: &str) -> Result<U, MobileIdError>
     where
-        U: Clone + Serialize + DeserializeOwned + 'a,
+        U: Clone + Serialize + DeserializeOwned + Debug + 'a,
     {
         let client = self.build_http_client();
         let request = client.get(url).build().unwrap();
@@ -191,20 +277,22 @@ impl<'a> MobileIdClient<'a> {
             .unwrap();
         let http_status_code = response.status().as_u16();
         let response_json = response.json::<U>().await.unwrap();
+        println!("GET {} response: {:?}", url, response_json);
         self.handle_http_status_code(http_status_code, response_json)
     }
+
     /// Fetches final session status. If session is not complete, then polls for session status until it is complete.
     pub async fn fetch_final_session_status(&self, session_id: String) -> SessionStatus {
         let mut session_status = self
             .poll_session_status(session_id.to_owned())
             .await
             .unwrap();
-        while session_status.is_complete() || session_status.get_state() == RUNNING {
+        while session_status.state == COMPLETE || session_status.state == RUNNING {
             session_status = self
                 .poll_session_status(session_id.to_owned())
                 .await
                 .unwrap();
-            if session_status.is_complete() {
+            if session_status.state != RUNNING {
                 return session_status;
             }
 

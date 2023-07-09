@@ -18,8 +18,8 @@ use crate::smart_id::models::{
     AuthenticationIdentity, CertificateLevel, CertificateParser, SessionEndResultCode,
     SmartIdAuthenticationResponse, SmartIdAuthenticationResult, SmartIdAuthenticationResultError,
 };
-use crate::smart_id::utils::certificate_attributes::CertificateAttributes;
-use crate::smart_id::utils::national_identity_number::NationalIdentityNumber;
+use crate::smart_id::utils::CertificateAttributes;
+use crate::smart_id::utils::NationalIdentityNumber;
 
 pub struct AuthenticationResponseValidator {
     trusted_ca_certificates: Vec<String>,
@@ -226,16 +226,13 @@ impl AuthenticationResponseValidator {
     fn get_date_of_birth(
         identity: &AuthenticationIdentity,
     ) -> Result<Option<DateTime<Utc>>, ErrorStack> {
-        let certificate_attribute_util = CertificateAttributes::new();
-        let date_of_birth_from_certificate_field = certificate_attribute_util
-            .get_date_of_birth_certificate_attribute(&identity.auth_certificate);
+        let date_of_birth_from_certificate_field = CertificateAttributes
+            ::get_date_of_birth_certificate_attribute(&identity.auth_certificate);
         if let Some(date_of_birth) = date_of_birth_from_certificate_field {
             return Ok(Some(date_of_birth));
         }
-
-        let national_identity_number_util = NationalIdentityNumber::new();
-        let date_of_birth = national_identity_number_util
-            .get_date_of_birth(&identity)
+        let date_of_birth = NationalIdentityNumber::
+            get_date_of_birth(&identity)
             .unwrap();
         Ok(date_of_birth)
     }

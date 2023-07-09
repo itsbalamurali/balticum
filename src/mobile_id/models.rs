@@ -1,12 +1,16 @@
+use base64::Engine;
+use base64::engine::general_purpose;
+use chrono::{NaiveDateTime};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use strum::EnumString;
 
-use crate::mobile_id::errors::MobileIdError;
-use crate::mobile_id::errors::MobileIdError::MissingOrInvalidParameter;
-use crate::mobile_id::models::SessionStatusState::{COMPLETE, INITIALIZED};
+use strum::EnumString;
+use x509_certificate::{X509Certificate};
+
+
+use crate::smart_id::models::HashType;
 
 #[derive(Debug, EnumString, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum Language {
     EST,
     ENG,
@@ -15,31 +19,39 @@ pub enum Language {
     LAT,
 }
 
+#[derive(Debug, EnumString, Serialize, Deserialize)]
+pub enum DisplayTextFormat {
+    #[serde(rename = "GSM-7")]
+    GSM7,
+    #[serde(rename = "UCS-2")]
+    UCS2,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthenticationRequest {
-    #[serde(rename = "relyingPartyUUID", skip_serializing_if = "Option::is_none")]
-    pub relying_party_uuid: Option<String>,
-    #[serde(rename = "relyingPartyName", skip_serializing_if = "Option::is_none")]
-    pub relying_party_name: Option<String>,
+    #[serde(rename = "relyingPartyUUID")]
+    pub relying_party_uuid: String,
+    #[serde(rename = "relyingPartyName")]
+    pub relying_party_name: String,
     #[serde(rename = "phoneNumber")]
     pub phone_number: String,
     #[serde(rename = "nationalIdentityNumber")]
     pub national_identity_number: String,
     pub hash: String,
     #[serde(rename = "hashType")]
-    pub hash_type: String,
+    pub hash_type: HashType,
     pub language: Language,
     #[serde(rename = "displayText")]
-    pub display_text: Option<String>,
+    pub display_text: String,
     #[serde(rename = "displayTextFormat")]
-    pub display_text_format: Option<String>,
+    pub display_text_format: DisplayTextFormat,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileIdSignature {
-    #[serde(rename = "valueInBase64")]
+    #[serde(rename = "value")]
     pub value_in_base64: String,
-    #[serde(rename = "algorithmName")]
+    #[serde(rename = "algorithm")]
     pub algorithm_name: String,
 }
 
@@ -52,6 +64,19 @@ pub struct SessionStatus {
     pub signature: Option<MobileIdSignature>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time: Option<NaiveDateTime>,
+    #[serde(rename="traceId", skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+}
+
+impl SessionStatus {
+    pub fn get_cert(self) -> Option<X509Certificate> {
+        if self.cert.is_none() {
+            return None;
+        }
+       Some(X509Certificate::from_der(general_purpose::STANDARD.decode(self.cert.unwrap()).unwrap().as_slice()).unwrap())
+    }
 }
 
 #[derive(Debug, Clone, strum::Display, Copy, PartialEq, Serialize, EnumString, Deserialize)]
@@ -79,6 +104,7 @@ pub enum SessionStatusResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, EnumString, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum SessionStatusState {
     INITIALIZED,
     RUNNING,
@@ -87,106 +113,12 @@ pub enum SessionStatusState {
     ERROR,
 }
 
-impl SessionStatus {
-    pub fn new(values: Option<&Value>) -> Result<Self, MobileIdError> {
-        let mut session_status = SessionStatus {
-            state: INITIALIZED,
-            result: None,
-            signature: None,
-            cert: None,
-        };
-
-        if let Some(values) = values {
-            if let Some(signature_values) = values.get("signature").and_then(Value::as_object) {
-                let algorithm = signature_values
-                    .get("algorithm")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let value = signature_values
-                    .get("value")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let signature = MobileIdSignature {
-                    value_in_base64: value.to_string(),
-                    algorithm_name: algorithm.to_string(),
-                };
-                session_status.signature = Some(signature);
-            }
-        }
-
-        if session_status.cert.is_none() {
-            return Err(MissingOrInvalidParameter(
-                "Certificate must be set.".to_string(),
-            ));
-        }
-
-        Ok(session_status)
-    }
-
-    pub fn get_state(&self) -> SessionStatusState {
-        self.state.clone()
-    }
-
-    pub fn set_state(&mut self, state: SessionStatusState) {
-        self.state = state;
-    }
-
-    pub fn get_signature(&self) -> Option<&MobileIdSignature> {
-        self.signature.as_ref()
-    }
-
-    pub fn set_signature(&mut self, signature: Option<MobileIdSignature>) {
-        self.signature = signature;
-    }
-
-    pub fn get_cert(&self) -> Result<&str, MobileIdError> {
-        self.cert
-            .as_deref()
-            .ok_or_else(|| MissingOrInvalidParameter("Certificate must be set.".to_string()))
-    }
-
-    pub fn set_cert(&mut self, cert: Option<String>) {
-        self.cert = cert;
-    }
-
-    pub fn is_complete(&self) -> bool {
-        self.state == COMPLETE
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticationResponse {
-    #[serde(rename = "sessionID")]
-    pub session_id: String,
+    #[serde(rename = "sessionID", skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-}
-
-impl AuthenticationResponse {
-    pub fn new(response_json: &serde_json::Value) -> Self {
-        let session_id = response_json["sessionID"]
-            .as_str()
-            .or_else(|| response_json["sessionId"].as_str())
-            .unwrap_or_default()
-            .to_string();
-
-        AuthenticationResponse {
-            session_id,
-            error: None,
-        }
-    }
-
-    pub fn get_session_id(&self) -> &str {
-        &self.session_id
-    }
-
-    pub fn set_session_id(&mut self, session_id: String) {
-        self.session_id = session_id;
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("AuthenticationResponse{{sessionID='{}'}}", self.session_id)
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
