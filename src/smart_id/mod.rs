@@ -23,16 +23,15 @@ use crate::smart_id::{
         SmartIdAuthenticationResponse, SmartIdErrorResponse,
     },
 };
-use reqwest::{Client, Error, StatusCode};
+use reqwest::{Certificate, Client, Error, StatusCode};
 use std::{cmp, thread::sleep, time::Duration};
 
 /// Smart-ID client for authentication and signing.
-pub struct SmartIdClient {
+pub struct SmartIdClient<'a> {
     relying_party_uuid: String,
     relying_party_name: String,
     host_url: String,
-    ssl_keys: Vec<String>,
-    client: Client,
+    ssl_pinned_public_keys: Option<&'a Certificate>,
     network_interface: String,
     polling_sleep_timeout_ms: u64,
     session_status_response_socket_timeout_ms: u64,
@@ -45,22 +44,20 @@ pub struct SmartIdClient {
     nonce: Option<String>,
 }
 
-impl SmartIdClient {
+impl<'a>  SmartIdClient<'a>  {
     /// Create a new Smart-ID client.
     pub fn new(
         host_url: String,
         relying_party_uuid: String,
         relying_party_name: String,
         authentication_hash: AuthenticationHash,
-        data_to_sign: Option<SignableData>,
-        ssl_keys: Vec<String>,
+        ssl_pinned_public_keys: Option<&'a Certificate>,
     ) -> Self {
         SmartIdClient {
             relying_party_uuid,
             relying_party_name,
             host_url,
-            ssl_keys,
-            client: Client::new(),
+            ssl_pinned_public_keys,
             network_interface: String::new(),
             polling_sleep_timeout_ms: 1000,
             session_status_response_socket_timeout_ms: 1000,
@@ -69,9 +66,21 @@ impl SmartIdClient {
             certificate_level: CertificateLevel::Qualified,
             allowed_interactions_order: Vec::new(),
             nonce: None,
-            data_to_sign,
+            data_to_sign: None,
             authentication_hash,
         }
+    }
+
+    /// Builds HTTP client with or without SSL pinning
+    fn build_http_client(&self) -> Client {
+        let http_client = Client::builder();
+        if self.ssl_pinned_public_keys.is_some() {
+            return http_client
+                .add_root_certificate(self.ssl_pinned_public_keys.clone().unwrap().clone())
+                .build()
+                .unwrap();
+        }
+        return http_client.build().unwrap();
     }
 
     // async fn authenticate(
@@ -238,6 +247,7 @@ impl SmartIdClient {
     //     }
     // }
 
+    /// Verifies that semantics identifier is set
     fn validate_semantics_identifier_if_set(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(semantics_identifier) = &self.semantics_identifier {
             semantics_identifier.validate()?;
@@ -245,6 +255,7 @@ impl SmartIdClient {
         Ok(())
     }
 
+    /// Verifies that interactions order is set
     fn verify_interactions_if_set(&self) -> Result<(), SmartIdError> {
         let interactions_order = &self.allowed_interactions_order;
         if interactions_order.is_empty() {
@@ -255,6 +266,7 @@ impl SmartIdClient {
         Ok(())
     }
 
+    /// Polls session status until it is not in running state.
     pub async fn poll_final_session_status(
         &self,
         session_id: String,
@@ -418,7 +430,7 @@ impl SmartIdClient {
         );
         println!("Request URL: {}", url);
         let response = self
-            .client
+            .build_http_client()
             .get(url)
             .send()
             .await?
@@ -439,7 +451,7 @@ impl SmartIdClient {
             "Request Payload: {}",
             serde_json::to_string(&request).unwrap()
         );
-        let response = self.client.post(url).json(&request).send().await.unwrap();
+        let response = self.build_http_client().post(url).json(&request).send().await.unwrap();
         let http_status_code = response.status();
         let resp_text = response.text().await.unwrap();
         println!("Response: {}", resp_text);

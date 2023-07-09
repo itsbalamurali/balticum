@@ -1,8 +1,7 @@
-# Baltic ID (baltic-id) Rust Library Crate
+# Balticum Rust Library Crate
 
-Baltic ID is a Rust library crate that provides user authentication and document signing functionalities using ID Card, Smart ID, and Mobile ID from SK ID Solutions.
-
-This crate aims to simplify the integration of Baltic ID services into Rust applications.
+Balticum is a Rust library crate that provides user authentication and document signing functionalities using ID Card, Smart ID, and Mobile ID from SK ID Solutions. And other baltic countries e-services.
+This crate aims to simplify the integration of Baltic Countries  e-services into Rust applications.
 
 ## Features
 
@@ -16,7 +15,7 @@ To use the Baltic ID library crate in your Rust project, add the following line 
 
 ```toml Cargo.toml
 [dependencies]
-baltic-id = "0.0.1"
+balticcum = "0.0.1"
 ```
 
 Note: This is a basic example demonstrating the usage of Baltic ID. Please refer to the documentation for detailed instructions and additional options.
@@ -81,11 +80,11 @@ async fn main() {
 
 ## Documentation
 
-For detailed instructions on how to use the Baltic ID library crate, refer to the doc.rs documentation.
+For detailed instructions on how to use the balticum library crate, refer to the doc.rs documentation.
 
 ## Contributing
 
-Contributions to the Baltic ID crate are welcome! If you encounter any issues or have suggestions for improvements, please open an issue on the GitHub repository. Pull requests are also encouraged.
+Contributions to the balticum crate are welcome! If you encounter any issues or have suggestions for improvements, please open an issue on the GitHub repository. Pull requests are also encouraged.
 
 ## License
 
@@ -93,7 +92,7 @@ This crate is licensed under the MIT License. See the [LICENSE](./LICENSE) file 
 
 ## Acknowledgments
 
-The Baltic ID crate was developed  inspiration from the services provided by SK ID Solutions.
+The balticum crate is developed with inspiration from the services provided by SK ID Solutions.
 
 Special thanks to the Rust community for their support and contributions.
 
