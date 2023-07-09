@@ -204,7 +204,6 @@ impl SmartIdClient {
         self.data_to_sign.is_some()
     }
 
-
     // fn create_smart_id_authentication_response(
     //     &self,
     //     session_status: &SessionStatus,

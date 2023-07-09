@@ -1,5 +1,5 @@
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use x509_parser::parse_x509_certificate;
-use chrono::{DateTime, NaiveDate,NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::smart_id::errors::SmartIdError;
 use crate::smart_id::errors::SmartIdError::UnprocessableSmartIdResponseException;
@@ -33,8 +33,6 @@ impl CertificateAttributes {
         None
     }
 }
-
-
 
 pub struct NationalIdentityNumber;
 
@@ -75,11 +73,7 @@ impl NationalIdentityNumber {
             }
         };
 
-        let date = Self::naive_date(
-            birth_year_four_digit,
-            birth_month,
-            birth_day,
-        );
+        let date = Self::naive_date(birth_year_four_digit, birth_month, birth_day);
 
         let datetime =
             Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
@@ -109,22 +103,18 @@ impl NationalIdentityNumber {
             }
         };
 
-        let date = Self::naive_date(
-            birth_year_four_digit,
-            birth_month,
-            birth_day,
-        );
+        let date = Self::naive_date(birth_year_four_digit, birth_month, birth_day);
         let datetime =
             Utc.from_utc_datetime(&date.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
         Ok(Some(datetime))
     }
 
-    fn naive_date(birth_year_four_digit: String, birth_month:&str, birth_day:&str) -> NaiveDate {
+    fn naive_date(birth_year_four_digit: String, birth_month: &str, birth_day: &str) -> NaiveDate {
         NaiveDate::from_ymd_opt(
             birth_year_four_digit.parse::<i32>().unwrap(),
             birth_month.parse::<u32>().unwrap(),
             birth_day.parse::<u32>().unwrap(),
         )
-            .unwrap()
+        .unwrap()
     }
 }

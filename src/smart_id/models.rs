@@ -353,9 +353,8 @@ impl CertificateParser {
     //let certificate_bytes = CertificateParser::get_der_certificate(certificate_value).unwrap();
 
     pub fn parse_x509_certificate(certificate: &[u8]) -> Result<X509Certificate, anyhow::Error> {
-        let parsed_cert= X509Certificate::from_der(certificate).map_err(
-            |e| anyhow!("Failed to parse the X.509 certificate: {}", e),
-        )?;
+        let parsed_cert = X509Certificate::from_der(certificate)
+            .map_err(|e| anyhow!("Failed to parse the X.509 certificate: {}", e))?;
         Ok(parsed_cert)
     }
 
@@ -380,17 +379,16 @@ pub struct DigestCalculator;
 impl DigestCalculator {
     pub fn calculate_digest(data_to_digest: &str, hash_type: HashType) -> Vec<u8> {
         if hash_type == HashType::Sha256 {
-           return  Sha256::digest(data_to_digest.as_bytes()).to_vec();
+            return Sha256::digest(data_to_digest.as_bytes()).to_vec();
         }
         if hash_type == HashType::Sha384 {
-           return  Sha384::digest(data_to_digest.as_bytes()).to_vec();
+            return Sha384::digest(data_to_digest.as_bytes()).to_vec();
         }
         if hash_type == HashType::Sha512 {
             return Sha512::digest(data_to_digest.as_bytes()).to_vec();
         }
-         panic!("Unsupported hash type: {}", hash_type);
+        panic!("Unsupported hash type: {}", hash_type);
     }
-
 }
 
 #[derive(Display, Default, Debug, Clone, PartialEq, EnumString, Serialize, Deserialize)]
@@ -613,17 +611,13 @@ pub struct SessionCertificate {
 
 impl SessionCertificate {
     pub fn get_x509_certificate(&self) -> Result<X509Certificate, SmartIdError> {
-        let cert = general_purpose::STANDARD.decode(&self.value.as_bytes()).map_err(|e| {
-            InvalidParametersException(format!(
-                "Failed to base64 decode certificate: {}",
-                e
-            ))
-        })?;
+        let cert = general_purpose::STANDARD
+            .decode(&self.value.as_bytes())
+            .map_err(|e| {
+                InvalidParametersException(format!("Failed to base64 decode certificate: {}", e))
+            })?;
         X509Certificate::from_der(cert).map_err(|e| {
-            InvalidParametersException(format!(
-                "Failed to parse certificate from PEM: {}",
-                e
-            ))
+            InvalidParametersException(format!("Failed to parse certificate from PEM: {}", e))
         })
     }
 }
@@ -670,7 +664,7 @@ pub enum SessionEndResultCode {
 pub struct SessionResult {
     #[serde(rename = "endResult")]
     pub end_result: SessionEndResultCode,
-    #[serde(rename= "documentNumber" ,skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "documentNumber", skip_serializing_if = "Option::is_none")]
     pub document_number: Option<String>,
 }
 
@@ -769,7 +763,6 @@ impl SessionStatus {
     pub fn get_cert(&self) -> Option<&SessionCertificate> {
         self.cert.as_ref()
     }
-
 
     pub fn is_running_state(&self) -> bool {
         self.state == SessionStatusCode::RUNNING

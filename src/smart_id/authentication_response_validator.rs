@@ -47,7 +47,8 @@ impl AuthenticationResponseValidator {
         self.validate_authentication_response(authentication_response)
             .unwrap();
 
-        let certificate= X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
+        let certificate =
+            X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
         let mut authentication_result = SmartIdAuthenticationResult::new();
         let identity = self.construct_authentication_identity(
             certificate.as_ref(),
@@ -128,11 +129,11 @@ impl AuthenticationResponseValidator {
     }
 
     // TODO: Fix this
-     fn verify_certificate_expiry(&self, authentication_certificate: &Certificate) -> bool {
-    //     let valid_to = authentication_certificate.tbs_certificate.validity.not_after.to_owned();
-    //     let now = Time::UtcTime(UtcTime::now());
-    //     valid_to > now
-    false
+    fn verify_certificate_expiry(&self, authentication_certificate: &Certificate) -> bool {
+        //     let valid_to = authentication_certificate.tbs_certificate.validity.not_after.to_owned();
+        //     let now = Time::UtcTime(UtcTime::now());
+        //     valid_to > now
+        false
     }
 
     fn verify_certificate_level(
@@ -162,8 +163,7 @@ impl AuthenticationResponseValidator {
 
         // Extract the given name
         if let Some(given_name) = subject.iter_by_oid("2.5.4.42".parse().unwrap()).next() {
-            identity
-                .set_given_name(given_name.value.to_string().unwrap());
+            identity.set_given_name(given_name.value.to_string().unwrap());
         }
 
         // Extract the surname
@@ -226,14 +226,14 @@ impl AuthenticationResponseValidator {
     fn get_date_of_birth(
         identity: &AuthenticationIdentity,
     ) -> Result<Option<DateTime<Utc>>, ErrorStack> {
-        let date_of_birth_from_certificate_field = CertificateAttributes
-            ::get_date_of_birth_certificate_attribute(&identity.auth_certificate);
+        let date_of_birth_from_certificate_field =
+            CertificateAttributes::get_date_of_birth_certificate_attribute(
+                &identity.auth_certificate,
+            );
         if let Some(date_of_birth) = date_of_birth_from_certificate_field {
             return Ok(Some(date_of_birth));
         }
-        let date_of_birth = NationalIdentityNumber::
-            get_date_of_birth(&identity)
-            .unwrap();
+        let date_of_birth = NationalIdentityNumber::get_date_of_birth(&identity).unwrap();
         Ok(date_of_birth)
     }
 }

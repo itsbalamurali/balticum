@@ -1,14 +1,12 @@
+use balticum::smart_id::models::{CertificateLevel, Interaction, SessionStatusCode};
+use balticum::smart_id::SmartIdClient;
 use balticum::{
     mobile_id::{
         models::{DisplayTextFormat, Language},
         MobileIdClient,
     },
-    smart_id::{
-        models::{self, AuthenticationHash},
-    },
+    smart_id::models::{self, AuthenticationHash},
 };
-use balticum::smart_id::models::{CertificateLevel, Interaction, SessionStatusCode};
-use balticum::smart_id::SmartIdClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,10 +25,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "PNOEE-50001029996-MOCK-Q".to_string(),
             None,
             CertificateLevel::Qualified,
-            vec![
-                Interaction::of_type_display_text_and_pin("display_text".to_string()),
-            ],
-            None
+            vec![Interaction::of_type_display_text_and_pin(
+                "display_text".to_string(),
+            )],
+            None,
         )
         .await
         .unwrap();
@@ -69,11 +67,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Auth Session: {:?}", auth_session);
 
     let session_status = client
-        .get_authentication_session_status(auth_session.session_id.unwrap(),None)
+        .get_authentication_session_status(auth_session.session_id.unwrap(), None)
         .await
         .unwrap();
 
-    println!("Session Status: {}", session_status.get_cert().unwrap().issuer_common_name().unwrap());
+    println!(
+        "Session Status: {}",
+        session_status
+            .get_cert()
+            .unwrap()
+            .issuer_common_name()
+            .unwrap()
+    );
 
     Ok(())
 }

@@ -1,11 +1,10 @@
-use base64::Engine;
 use base64::engine::general_purpose;
-use chrono::{NaiveDateTime};
+use base64::Engine;
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use strum::EnumString;
-use x509_certificate::{X509Certificate};
-
+use x509_certificate::X509Certificate;
 
 use crate::smart_id::models::HashType;
 
@@ -66,7 +65,7 @@ pub struct SessionStatus {
     pub cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<NaiveDateTime>,
-    #[serde(rename="traceId", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "traceId", skip_serializing_if = "Option::is_none")]
     pub trace_id: Option<String>,
 }
 
@@ -75,7 +74,15 @@ impl SessionStatus {
         if self.cert.is_none() {
             return None;
         }
-       Some(X509Certificate::from_der(general_purpose::STANDARD.decode(self.cert.unwrap()).unwrap().as_slice()).unwrap())
+        Some(
+            X509Certificate::from_der(
+                general_purpose::STANDARD
+                    .decode(self.cert.unwrap())
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap(),
+        )
     }
 }
 
