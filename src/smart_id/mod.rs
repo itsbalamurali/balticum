@@ -35,7 +35,6 @@ pub struct SmartIdClient<'a> {
     network_interface: String,
     polling_sleep_timeout_ms: u64,
     session_status_response_socket_timeout_ms: u64,
-    data_to_sign: Option<SignableData>,
     authentication_hash: AuthenticationHash,
     semantics_identifier: Option<SemanticsIdentifier>,
     document_number: Option<String>,
@@ -66,7 +65,6 @@ impl<'a>  SmartIdClient<'a>  {
             certificate_level: CertificateLevel::Qualified,
             allowed_interactions_order: Vec::new(),
             nonce: None,
-            data_to_sign: None,
             authentication_hash,
         }
     }
@@ -209,10 +207,6 @@ impl<'a>  SmartIdClient<'a>  {
         Ok(())
     }
 
-    fn is_signable_data_set(&self) -> bool {
-        self.data_to_sign.is_some()
-    }
-
     // fn create_smart_id_authentication_response(
     //     &self,
     //     session_status: &SessionStatus,
@@ -321,8 +315,8 @@ impl<'a>  SmartIdClient<'a>  {
         }
 
         // let end_result = result.unwrap().get_end_result();
-        if let Some(result) = session_status.to_owned().result {
-            return match result.end_result {
+        return if let Some(result) = session_status.to_owned().result {
+            match result.end_result {
                 SessionEndResultCode::UserRefused => Err(UserRefusedException),
                 SessionEndResultCode::Timeout => Err(SessionTimeoutException),
                 SessionEndResultCode::DocumentUnusable => Err(DocumentUnusableException),
@@ -345,11 +339,11 @@ impl<'a>  SmartIdClient<'a>  {
                 _ => Err(TechnicalError(
                     "Session status end result is unknown".to_string(),
                 )),
-            };
+            }
         } else {
-            return Err(TechnicalError(
+            Err(TechnicalError(
                 "Result is missing in the session status response".to_string(),
-            ));
+            ))
         }
     }
 

@@ -18,7 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "DEMO".to_string(),
         auth_hash.to_owned(),
         None,
-        Vec::new(),
     );
     let auth_session = client
         .authenticate_with_document_number(
