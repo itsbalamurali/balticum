@@ -6,14 +6,14 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::error::Error;
-use std::str::FromStr;
 use strum::Display;
 use strum::EnumString;
 use thiserror::Error;
+use x509_certificate::rfc5280::Certificate;
 use x509_certificate::X509Certificate;
 
 use crate::smart_id::errors::SmartIdError;
-use crate::smart_id::errors::SmartIdError::{InvalidParametersException, TechnicalError};
+use crate::smart_id::errors::SmartIdError::{InvalidParametersException};
 use crate::smart_id::verification_code_calculator::VerificationCodeCalculator;
 
 #[derive(Error, Clone, Debug, Serialize, Deserialize)]
@@ -30,7 +30,7 @@ pub enum SmartIdAuthenticationResultError {
     CertificateLevelMismatch,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SmartIdAuthenticationResult {
     pub authentication_identity: Option<AuthenticationIdentity>,
     pub valid: bool,
@@ -230,7 +230,7 @@ pub struct AuthenticationSessionRequest {
     pub allowed_interactions_order: Vec<Interaction>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, EnumString, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum CertificateLevel {
     #[strum(serialize = "QUALIFIED")]
@@ -243,11 +243,11 @@ pub enum CertificateLevel {
 }
 
 impl CertificateLevel {
-    pub fn is_equal_or_above(&self, certificate_level: &str) -> bool {
-        if self == &CertificateLevel::from_str(certificate_level).unwrap() {
+    pub fn is_equal_or_above(&self, certificate_level: CertificateLevel) -> bool {
+        if self == &certificate_level {
             true
         } else {
-            match (certificate_level.parse().unwrap(), &self) {
+            match (&certificate_level, &self) {
                 (CertificateLevel::Advanced, CertificateLevel::Advanced)
                 | (CertificateLevel::Qualified, CertificateLevel::Qualified)
                 | (CertificateLevel::Qualified, CertificateLevel::Advanced) => true,
@@ -874,230 +874,17 @@ pub struct SmartIdAuthenticationResponse {
     pub document_number: Option<String>,
 }
 
-impl SmartIdAuthenticationResponse {
-    pub fn new() -> SmartIdAuthenticationResponse {
-        SmartIdAuthenticationResponse {
-            end_result: SessionEndResultCode::Ok,
-            signed_data: String::new(),
-            value_in_base64: String::new(),
-            algorithm_name: None,
-            certificate: String::new(),
-            requested_certificate_level: None,
-            certificate_level: String::new(),
-            state: SessionStatusCode::RUNNING,
-            ignored_properties: None,
-            interaction_flow_used: None,
-            document_number: None,
-        }
-    }
-
-    pub fn get_end_result(&self) -> SessionEndResultCode {
-        self.end_result.clone()
-    }
-
-    pub fn set_end_result(&mut self, end_result: SessionEndResultCode) {
-        self.end_result = end_result;
-    }
-
-    pub fn get_signed_data(&self) -> &str {
-        &self.signed_data
-    }
-
-    pub fn set_signed_data(&mut self, signed_data: String) {
-        self.signed_data = signed_data;
-    }
-
-    pub fn get_value_in_base64(&self) -> String {
-        self.value_in_base64.clone()
-    }
-
-    pub fn set_value_in_base64(&mut self, value_in_base64: String) {
-        self.value_in_base64 = value_in_base64;
-    }
-
-    pub fn get_algorithm_name(&self) -> &str {
-        self.algorithm_name.as_deref().unwrap_or("")
-    }
-
-    pub fn set_algorithm_name(&mut self, algorithm_name: String) {
-        self.algorithm_name = Some(algorithm_name.clone());
-    }
-
-    pub fn get_certificate(&self) -> &str {
-        self.certificate.as_str()
-    }
-
-    // pub fn get_parsed_certificate<'a>(&self) -> Result<X509Certificate<'a>, anyhow::Error> {
-    //     let certificate = CertificateParser::get_der_certificate(self.certificate.clone()).unwrap();
-    //     CertificateParser::parse_x509_certificate(certificate.as_slice())
-    // }
-
-    // pub fn get_certificate_instance(&self) -> Option<X509Certificate> {
-    //     let certificate = CertificateParser::get_der_certificate(self.certificate.clone()).unwrap();
-    //     let parsed = CertificateParser::parse_x509_certificate(certificate.as_slice()).unwrap();
-    //     Some(parsed)
-    // }
-
-    pub fn set_certificate(&mut self, certificate: String) {
-        self.certificate = certificate;
-    }
-
-    pub fn get_certificate_level(&self) -> &str {
-        self.certificate_level.as_str()
-    }
-
-    pub fn set_certificate_level(&mut self, certificate_level: String) {
-        self.certificate_level = certificate_level;
-    }
-
-    pub fn get_requested_certificate_level(&self) -> Option<&str> {
-        self.requested_certificate_level.as_deref()
-    }
-
-    pub fn set_requested_certificate_level(&mut self, requested_certificate_level: Option<String>) {
-        self.requested_certificate_level = requested_certificate_level;
-    }
-
-    pub fn get_value(&self) -> Result<Vec<u8>, SmartIdError> {
-        match self.value_in_base64.is_empty() {
-            true => Err(TechnicalError("No value in base64 format".to_string())),
-            false => {
-                let decoded = general_purpose::STANDARD
-                    .decode(self.value_in_base64.as_str())
-                    .map_err(|_| {
-                        TechnicalError(format!("Failed to decode base64: {}", self.value_in_base64))
-                    })?;
-                Ok(decoded)
-            }
-        }
-    }
-
-    pub fn set_state(&mut self, state: SessionStatusCode) {
-        self.state = state;
-    }
-
-    pub fn get_state(&self) -> SessionStatusCode {
-        self.state.clone()
-    }
-
-    pub fn set_ignored_properties(&mut self, ignored_properties: Option<Vec<String>>) {
-        self.ignored_properties = ignored_properties;
-    }
-
-    pub fn get_interaction_flow_used(&self) -> &str {
-        self.interaction_flow_used.as_deref().unwrap_or("")
-    }
-
-    pub fn set_interaction_flow_used(&mut self, interaction_flow_used: Option<String>) {
-        self.interaction_flow_used = interaction_flow_used;
-    }
-
-    pub fn is_running_state(&self) -> bool {
-        self.state == SessionStatusCode::RUNNING
-    }
-
-    pub fn set_document_number(&mut self, document_number: Option<String>) {
-        self.document_number = document_number;
-    }
-
-    pub fn get_document_number(&self) -> Option<&str> {
-        self.document_number.as_deref()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct AuthenticationIdentity {
     pub given_name: String,
     pub sur_name: String,
     pub identity_code: String,
     pub identity_number: String,
     pub country: String,
-    pub auth_certificate: String,
+    pub auth_certificate: Certificate,
     pub date_of_birth: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-impl AuthenticationIdentity {
-    pub fn new() -> AuthenticationIdentity {
-        AuthenticationIdentity {
-            given_name: String::new(),
-            sur_name: String::new(),
-            identity_code: String::new(),
-            identity_number: String::new(),
-            country: String::new(),
-            auth_certificate: String::new(),
-            date_of_birth: None,
-        }
-    }
-
-    pub fn set_given_name(&mut self, given_name: String) -> &mut AuthenticationIdentity {
-        self.given_name = given_name;
-        self
-    }
-
-    pub fn get_given_name(&self) -> &str {
-        &self.given_name
-    }
-
-    pub fn set_sur_name(&mut self, sur_name: String) -> &mut AuthenticationIdentity {
-        self.sur_name = sur_name;
-        self
-    }
-
-    pub fn get_sur_name(&self) -> &str {
-        &self.sur_name
-    }
-
-    pub fn set_identity_code(&mut self, identity_code: String) -> &mut AuthenticationIdentity {
-        self.identity_code = identity_code;
-        self
-    }
-
-    pub fn get_identity_code(&self) -> &str {
-        &self.identity_code
-    }
-
-    pub fn set_identity_number(&mut self, identity_number: String) -> &mut AuthenticationIdentity {
-        self.identity_number = identity_number;
-        self
-    }
-
-    pub fn get_identity_number(&self) -> &str {
-        &self.identity_number
-    }
-
-    pub fn set_country(&mut self, country: String) -> &mut AuthenticationIdentity {
-        self.country = country;
-        self
-    }
-
-    pub fn get_country(&self) -> &str {
-        &self.country
-    }
-
-    pub fn set_auth_certificate(
-        &mut self,
-        auth_certificate: String,
-    ) -> &mut AuthenticationIdentity {
-        self.auth_certificate = auth_certificate;
-        self
-    }
-
-    pub fn get_auth_certificate(&self) -> &str {
-        &self.auth_certificate
-    }
-
-    pub fn set_date_of_birth(
-        &mut self,
-        date_of_birth: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> &mut AuthenticationIdentity {
-        self.date_of_birth = date_of_birth;
-        self
-    }
-
-    pub fn get_date_of_birth(&self) -> Option<&chrono::DateTime<chrono::Utc>> {
-        self.date_of_birth.as_ref()
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmartIdErrorResponse {

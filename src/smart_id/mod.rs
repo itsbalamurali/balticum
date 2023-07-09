@@ -1,4 +1,3 @@
-mod authentication_response_validator;
 mod errors;
 pub mod models;
 pub mod utils;
@@ -18,7 +17,7 @@ use crate::smart_id::{
     },
     models::{
         AuthenticationHash, AuthenticationSessionRequest, AuthenticationSessionResponse,
-        CertificateLevel, HashType, Interaction, SemanticsIdentifier, SessionEndResultCode,
+        CertificateLevel, Interaction, SemanticsIdentifier, SessionEndResultCode,
         SessionStatus, SessionStatusCode, SessionStatusRequest, SignableData,
         SmartIdAuthenticationResponse, SmartIdErrorResponse,
     },
@@ -36,7 +35,6 @@ pub struct SmartIdClient<'a> {
     polling_sleep_timeout_ms: u64,
     session_status_response_socket_timeout_ms: u64,
     authentication_hash: AuthenticationHash,
-    semantics_identifier: Option<SemanticsIdentifier>,
     document_number: Option<String>,
     certificate_level: CertificateLevel,
     allowed_interactions_order: Vec<Interaction>,
@@ -60,7 +58,6 @@ impl<'a>  SmartIdClient<'a>  {
             network_interface: String::new(),
             polling_sleep_timeout_ms: 1000,
             session_status_response_socket_timeout_ms: 1000,
-            semantics_identifier: None,
             document_number: None,
             certificate_level: CertificateLevel::Qualified,
             allowed_interactions_order: Vec::new(),
@@ -163,8 +160,6 @@ impl<'a>  SmartIdClient<'a>  {
         self.validate_session_status_result(session_status.to_owned())
             .unwrap();
         if session_status.is_running_state() {
-            let mut authentication_response = SmartIdAuthenticationResponse::new();
-            authentication_response.set_state(SessionStatusCode::RUNNING);
             Ok(session_status)
         } else {
             self.validate_session_status(&session_status).unwrap();
@@ -194,13 +189,11 @@ impl<'a>  SmartIdClient<'a>  {
     // }
 
     fn validate_auth_request_parameters(&self) -> Result<(), SmartIdError> {
-        if self.document_number.is_none() && self.semantics_identifier.is_none() {
+        if self.document_number.is_none() {
             return Err(InvalidParametersException(
                 "Either document number or semantics identifier must be set".to_string(),
             ));
         }
-
-        self.validate_semantics_identifier_if_set().unwrap();
 
         self.verify_interactions_if_set().unwrap();
 
@@ -240,14 +233,6 @@ impl<'a>  SmartIdClient<'a>  {
     //         String::new()
     //     }
     // }
-
-    /// Verifies that semantics identifier is set
-    fn validate_semantics_identifier_if_set(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(semantics_identifier) = &self.semantics_identifier {
-            semantics_identifier.validate()?;
-        }
-        Ok(())
-    }
 
     /// Verifies that interactions order is set
     fn verify_interactions_if_set(&self) -> Result<(), SmartIdError> {
@@ -336,9 +321,6 @@ impl<'a>  SmartIdClient<'a>  {
                 SessionEndResultCode::UserRefusedCertChoice => Err(UserRefusedCertChoiceException),
                 SessionEndResultCode::WrongVC => Err(UserSelectedWrongVerificationCodeException),
                 SessionEndResultCode::Ok => Ok(session_status.to_owned()),
-                _ => Err(TechnicalError(
-                    "Session status end result is unknown".to_string(),
-                )),
             }
         } else {
             Err(TechnicalError(

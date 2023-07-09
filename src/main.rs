@@ -7,6 +7,7 @@ use balticum::{
     },
     smart_id::models::{self, AuthenticationHash},
 };
+use balticum::smart_id::utils::AuthenticationResponseValidator;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,14 +71,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .unwrap();
 
-    println!(
-        "Session Status: {}",
-        session_status
-            .get_cert()
-            .unwrap()
-            .issuer_common_name()
-            .unwrap()
-    );
 
+    let cert = session_status.get_cert().unwrap();
+    let a = AuthenticationResponseValidator::new(None).unwrap();
+    let res = a.validate(CertificateLevel::Qualified,CertificateLevel::Qualified,cert).unwrap();
+    println!("Result {:?}",res);
     Ok(())
 }
