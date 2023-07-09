@@ -10,8 +10,7 @@ use std::str::FromStr;
 use strum::Display;
 use strum::EnumString;
 use thiserror::Error;
-use x509_parser::parse_x509_certificate;
-use x509_parser::prelude::X509Certificate;
+use x509_certificate::X509Certificate;
 
 use crate::smart_id::errors::SmartIdError;
 use crate::smart_id::errors::SmartIdError::{InvalidParametersException, TechnicalError};
@@ -354,10 +353,9 @@ impl CertificateParser {
     //let certificate_bytes = CertificateParser::get_der_certificate(certificate_value).unwrap();
 
     pub fn parse_x509_certificate(certificate: &[u8]) -> Result<X509Certificate, anyhow::Error> {
-        let (rest, parsed_cert) = parse_x509_certificate(certificate).unwrap();
-        if !rest.is_empty() {
-            return Err(anyhow!("Failed to parse the entire X.509 certificate"));
-        }
+        let parsed_cert= X509Certificate::from_der(certificate).map_err(
+            |e| anyhow!("Failed to parse the X.509 certificate: {}", e),
+        )?;
         Ok(parsed_cert)
     }
 
@@ -608,34 +606,25 @@ impl SemanticsIdentifierTypes {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionCertificate {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    #[serde(rename="certificateLevel",skip_serializing_if = "Option::is_none")]
-    pub certificate_level: Option<String>,
+    pub value: String,
+    #[serde(rename = "certificateLevel")]
+    pub certificate_level: String,
 }
 
 impl SessionCertificate {
-    pub fn new() -> SessionCertificate {
-        SessionCertificate {
-            value: None,
-            certificate_level: None,
-        }
-    }
-
-    pub fn set_value(&mut self, value: String) {
-        self.value = Some(value);
-    }
-
-    pub fn get_value(&self) -> Option<String> {
-        self.value.clone()
-    }
-
-    pub fn set_certificate_level(&mut self, certificate_level: String) {
-        self.certificate_level = Some(certificate_level);
-    }
-
-    pub fn get_certificate_level(&self) -> Option<String> {
-        self.certificate_level.clone()
+    pub fn get_x509_certificate(&self) -> Result<X509Certificate, SmartIdError> {
+        let cert = general_purpose::STANDARD.decode(&self.value.as_bytes()).map_err(|e| {
+            InvalidParametersException(format!(
+                "Failed to base64 decode certificate: {}",
+                e
+            ))
+        })?;
+        X509Certificate::from_der(cert).map_err(|e| {
+            InvalidParametersException(format!(
+                "Failed to parse certificate from PEM: {}",
+                e
+            ))
+        })
     }
 }
 
@@ -714,31 +703,6 @@ pub struct SessionSignature {
     pub value: Option<String>,
 }
 
-impl SessionSignature {
-    pub fn new() -> SessionSignature {
-        SessionSignature {
-            algorithm: None,
-            value: None,
-        }
-    }
-
-    pub fn set_algorithm(&mut self, algorithm: String) {
-        self.algorithm = Some(algorithm);
-    }
-
-    pub fn get_algorithm(&self) -> Option<String> {
-        self.algorithm.clone()
-    }
-
-    pub fn set_value(&mut self, value: String) {
-        self.value = Some(value);
-    }
-
-    pub fn get_value(&self) -> Option<String> {
-        self.value.clone()
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStatus {
     pub state: SessionStatusCode,
@@ -806,13 +770,6 @@ impl SessionStatus {
         self.cert.as_ref()
     }
 
-    pub fn get_ignored_properties(&self) -> Option<&Vec<String>> {
-        self.ignored_properties.as_ref()
-    }
-
-    pub fn get_interaction_flow_used(&self) -> Option<&str> {
-        self.interaction_flow_used.as_deref()
-    }
 
     pub fn is_running_state(&self) -> bool {
         self.state == SessionStatusCode::RUNNING

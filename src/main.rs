@@ -45,8 +45,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap();
         println!("{:?}", auth_response);
     }
-    let cert = auth_response.get_cert().unwrap().get_value().unwrap();
-    println!("{:?}", cert);
+    let cert = auth_response.cert.unwrap().get_x509_certificate().unwrap();
+    println!("{:?}", cert.issuer_common_name().unwrap());
 
     // Test Mobile-ID authentication
     let client = MobileIdClient::new(

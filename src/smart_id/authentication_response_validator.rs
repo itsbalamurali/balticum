@@ -11,8 +11,9 @@ use openssl::{
     stack::Stack,
     x509::{store::X509StoreBuilder, verify::X509VerifyFlags, X509StoreContext, X509},
 };
-use x509_parser::der_parser::oid;
-use x509_parser::prelude::{FromDer, X509Certificate};
+use x509_certificate::asn1time::{Time, UtcTime};
+use x509_certificate::rfc5280::Certificate;
+use x509_certificate::X509Certificate;
 
 use crate::smart_id::models::{
     AuthenticationIdentity, CertificateLevel, CertificateParser, SessionEndResultCode,
@@ -46,12 +47,10 @@ impl AuthenticationResponseValidator {
         self.validate_authentication_response(authentication_response)
             .unwrap();
 
-        let (_, certificate) =
-            X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
-
+        let certificate= X509Certificate::from_der(&authentication_response.certificate.as_bytes()).unwrap();
         let mut authentication_result = SmartIdAuthenticationResult::new();
         let identity = self.construct_authentication_identity(
-            &certificate,
+            certificate.as_ref(),
             &authentication_response.certificate,
         )?;
         authentication_result.set_authentication_identity(identity);
@@ -65,7 +64,7 @@ impl AuthenticationResponseValidator {
             authentication_result
                 .add_error(SmartIdAuthenticationResultError::SignatureVerificationFailure);
         }
-        if !self.verify_certificate_expiry(&certificate) {
+        if !self.verify_certificate_expiry(certificate.as_ref()) {
             authentication_result.set_valid(false);
             authentication_result.add_error(SmartIdAuthenticationResultError::CertificateExpired);
         }
@@ -128,10 +127,12 @@ impl AuthenticationResponseValidator {
         Ok(verifier.verify(signature.as_slice()).unwrap())
     }
 
-    fn verify_certificate_expiry(&self, authentication_certificate: &X509Certificate<'_>) -> bool {
-        let valid_to = authentication_certificate.validity.not_after.timestamp();
-        let now = Utc::now().timestamp();
-        valid_to > now
+    // TODO: Fix this
+     fn verify_certificate_expiry(&self, authentication_certificate: &Certificate) -> bool {
+    //     let valid_to = authentication_certificate.tbs_certificate.validity.not_after.to_owned();
+    //     let now = Time::UtcTime(UtcTime::now());
+    //     valid_to > now
+    false
     }
 
     fn verify_certificate_level(
@@ -151,7 +152,7 @@ impl AuthenticationResponseValidator {
 
     fn construct_authentication_identity(
         &self,
-        certificate: &X509Certificate<'_>,
+        certificate: &Certificate,
         x509_certificate: &str,
     ) -> Result<AuthenticationIdentity, ErrorStack> {
         let mut identity = AuthenticationIdentity::new();
@@ -160,20 +161,19 @@ impl AuthenticationResponseValidator {
         let subject = &tbs_certificate.subject;
 
         // Extract the given name
-        if let Some(given_name) = subject.iter_by_oid(&oid!(2.5.4 .42)).next() {
+        if let Some(given_name) = subject.iter_by_oid("2.5.4.42".parse().unwrap()).next() {
             identity
-                .set_given_name(String::from_utf8_lossy(given_name.attr_value().data).to_string());
+                .set_given_name(given_name.value.to_string().unwrap());
         }
 
         // Extract the surname
-        if let Some(surname) = subject.iter_by_oid(&oid!(2.5.4 .4)).next() {
-            identity.set_sur_name(String::from_utf8_lossy(surname.attr_value().data).to_string());
+        if let Some(surname) = subject.iter_by_oid("2.5.4.4".parse().unwrap()).next() {
+            identity.set_sur_name(surname.value.to_string().unwrap());
         }
 
         // Extract the identity code
-        if let Some(identity_code) = subject.iter_by_oid(&oid!(2.5.4 .5)).next() {
-            let identity_code =
-                String::from_utf8_lossy(identity_code.attr_value().data).to_string();
+        if let Some(identity_code) = subject.iter_by_oid("2.5.4.5".parse().unwrap()).next() {
+            let identity_code = identity_code.value.to_string().unwrap();
             identity.set_identity_code(identity_code.to_owned());
             let identity_number = identity_code.splitn(2, '-').nth(1);
             identity.set_identity_number(identity_number.unwrap().to_string());
@@ -181,7 +181,7 @@ impl AuthenticationResponseValidator {
 
         // Extract the country
         if let Some(country) = subject.iter_country().next() {
-            identity.set_country(String::from_utf8_lossy(country.attr_value().data).to_string());
+            identity.set_country(country.value.to_string().unwrap());
         }
 
         identity.set_date_of_birth(Self::get_date_of_birth(&identity)?);
