@@ -13,3 +13,6 @@ pub enum IDCardError {
     #[error("Not implemented")]
     NotImplemented,
 }
+
+#[cfg(test)]
+mod tests;

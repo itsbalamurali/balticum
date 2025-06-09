@@ -366,3 +366,6 @@ impl<'a> MobileIdClient<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use crate::smart_id::errors::SmartIdError;
 use crate::smart_id::errors::SmartIdError::UnprocessableSmartIdResponseException;
-use std::fs::read_dir;
+// use std::fs::read_dir; // Removed unused import
 
 use anyhow::anyhow;
 use openssl::{
@@ -129,20 +129,24 @@ impl NationalIdentityNumber {
     }
 }
 
-
+#[allow(dead_code)] // To suppress warnings for unused struct and fields
 pub struct AuthenticationResponseValidator {
     trusted_ca_certificates: Vec<String>,
 }
 
+#[allow(dead_code)] // To suppress warnings for unused methods
 impl AuthenticationResponseValidator {
-    pub fn new(resources_location: Option<&str>) -> Result<Self, ErrorStack> {
-        let resources_location = match resources_location {
-            Some(location) => location.to_owned(),
-            None => format!("{}/../../../resources", env!("CARGO_MANIFEST_DIR")),
-        };
+    pub fn new(_resources_location: Option<&str>) -> Result<Self, ErrorStack> { // Prefixed resources_location
+        // let resources_location = match _resources_location { // Original logic commented out
+        //     Some(location) => location.to_owned(),
+        //     None => format!("{}/../../../resources", env!("CARGO_MANIFEST_DIR")),
+        // };
 
-        let trusted_ca_certificates =
-            Self::initialize_trusted_ca_certificates_from_resources(&resources_location)?;
+        // The original code used _resources_location to call initialize_trusted_ca_certificates_from_resources
+        // For now, as that function's body is also commented, we just initialize with empty.
+        let trusted_ca_certificates = Vec::new();
+        // let trusted_ca_certificates =
+        //     Self::initialize_trusted_ca_certificates_from_resources(&resources_location)?;
         Ok(Self {
             trusted_ca_certificates,
         })
@@ -154,33 +158,16 @@ impl AuthenticationResponseValidator {
         received_cert_level: CertificateLevel,
         certificate: X509Certificate,
     ) -> Result<SmartIdAuthenticationResult, ErrorStack> {
-        // self.validate_authentication_response(authentication_response)
-        //     .unwrap();
-
         let mut authentication_result = SmartIdAuthenticationResult::new();
         let identity = self.construct_authentication_identity(
             certificate.as_ref(),
         )?;
         authentication_result.set_authentication_identity(identity);
 
-        // if !self.verify_response_end_result(authentication_response) {
-        //     authentication_result.set_valid(false);
-        //     authentication_result.add_error(SmartIdAuthenticationResultError::InvalidEndResult);
-        // }
-        // if !self.verify_signature(certificate)? {
-        //     authentication_result.set_valid(false);
-        //     authentication_result
-        //         .add_error(SmartIdAuthenticationResultError::SignatureVerificationFailure);
-        // }
         if !self.verify_certificate_expiry(certificate.as_ref()) {
             authentication_result.set_valid(false);
             authentication_result.add_error(SmartIdAuthenticationResultError::CertificateExpired);
         }
-        // if !self.is_certificate_trusted(certificate.encode_pem().unwrap().into_bytes())? {
-        //     authentication_result.set_valid(false);
-        //     authentication_result
-        //         .add_error(SmartIdAuthenticationResultError::CertificateNotTrusted);
-        // }
         if !self.verify_certificate_level(received_cert_level,requested_cert_level) {
             authentication_result.set_valid(false);
             authentication_result
@@ -230,8 +217,8 @@ impl AuthenticationResponseValidator {
     }
 
     // TODO: Fix this
-    fn verify_certificate_expiry(&self, authentication_certificate: &Certificate) -> bool {
-        //     let valid_to = authentication_certificate.tbs_certificate.validity.not_after.to_owned();
+    fn verify_certificate_expiry(&self, _authentication_certificate: &Certificate) -> bool { // Prefixed
+        //     let valid_to = _authentication_certificate.tbs_certificate.validity.not_after.to_owned();
         //     let now = Time::UtcTime(UtcTime::now());
         //     valid_to > now
         false
@@ -261,17 +248,14 @@ impl AuthenticationResponseValidator {
         let tbs_certificate = &certificate.tbs_certificate;
         let subject = &tbs_certificate.subject;
 
-        // Extract the given name
         if let Some(given_name) = subject.iter_by_oid("2.5.4.42".parse().unwrap()).next() {
             identity.given_name = given_name.value.to_string().unwrap();
         }
 
-        // Extract the surname
         if let Some(surname) = subject.iter_by_oid("2.5.4.4".parse().unwrap()).next() {
             identity.sur_name = surname.value.to_string().unwrap();
         }
 
-        // Extract the identity code
         if let Some(identity_code) = subject.iter_by_oid("2.5.4.5".parse().unwrap()).next() {
             let identity_code = identity_code.value.to_string().unwrap();
             identity.identity_code =identity_code.to_owned();
@@ -279,7 +263,6 @@ impl AuthenticationResponseValidator {
             identity.identity_number = identity_number.unwrap().to_string();
         }
 
-        // Extract the country
         if let Some(country) = subject.iter_country().next() {
             identity.country = country.value.to_string().unwrap();
         }
@@ -288,12 +271,13 @@ impl AuthenticationResponseValidator {
         Ok(identity)
     }
 
+    #[allow(dead_code)] // This function is unused as its caller logic is commented out
     fn initialize_trusted_ca_certificates_from_resources(
-        resources_location: &str,
+        _resources_location: &str, // Prefixed
     ) -> Result<Vec<String>, ErrorStack> {
-        let mut trusted_ca_certificates = Vec::new();
-        // let trusted_certificates_directory = format!("{}/trusted_certificates", resources_location);
-        // for entry in read_dir(trusted_certificates_directory).unwrap() {
+        let trusted_ca_certificates = Vec::new(); // Removed mut
+        // let trusted_certificates_directory = format!("{}/trusted_certificates", _resources_location);
+        // for entry in read_dir(trusted_certificates_directory).unwrap() { // read_dir was here
         //     if let Ok(file) = entry {
         //         let path = file.path();
         //         if !path.is_dir() && !file.file_name().to_string_lossy().starts_with(".") {
@@ -301,7 +285,6 @@ impl AuthenticationResponseValidator {
         //         }
         //     }
         // }
-
         Ok(trusted_ca_certificates)
     }
 
@@ -335,4 +318,3 @@ impl AuthenticationResponseValidator {
         Ok(date_of_birth)
     }
 }
-

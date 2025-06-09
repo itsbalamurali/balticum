@@ -18,14 +18,14 @@ use crate::smart_id::{
     models::{
         AuthenticationHash, AuthenticationSessionRequest, AuthenticationSessionResponse,
         CertificateLevel, Interaction, SemanticsIdentifier, SessionEndResultCode,
-        SessionStatus, SessionStatusCode, SessionStatusRequest, SignableData,
-        SmartIdAuthenticationResponse, SmartIdErrorResponse,
+        SessionStatus, SmartIdErrorResponse, // Removed SessionStatusRequest
     },
 };
-use reqwest::{Certificate, Client, Error, StatusCode};
+use reqwest::{Certificate, Client, StatusCode}; // Removed Error
 use std::{cmp, thread::sleep, time::Duration};
 
 /// Smart-ID client for authentication and signing.
+#[allow(dead_code)] // To suppress warnings for unused fields if not all are used yet
 pub struct SmartIdClient<'a> {
     relying_party_uuid: String,
     relying_party_name: String,
@@ -35,10 +35,10 @@ pub struct SmartIdClient<'a> {
     polling_sleep_timeout_ms: u64,
     session_status_response_socket_timeout_ms: u64,
     authentication_hash: AuthenticationHash,
-    document_number: Option<String>,
-    certificate_level: CertificateLevel,
-    allowed_interactions_order: Vec<Interaction>,
-    nonce: Option<String>,
+    document_number: Option<String>, // Marked with allow(dead_code) implicitly by struct attribute
+    certificate_level: CertificateLevel, // Marked with allow(dead_code) implicitly by struct attribute
+    allowed_interactions_order: Vec<Interaction>, // Marked with allow(dead_code) implicitly by struct attribute
+    nonce: Option<String>, // Marked with allow(dead_code) implicitly by struct attribute
 }
 
 impl<'a>  SmartIdClient<'a>  {
@@ -78,23 +78,6 @@ impl<'a>  SmartIdClient<'a>  {
         return http_client.build().unwrap();
     }
 
-    // async fn authenticate(
-    //     &self,
-    // ) -> Result<SmartIdAuthenticationResponse, Box<dyn std::error::Error>> {
-    //     let response = self.get_authentication_response().await.unwrap();
-    //     let session_id = response.session_id;
-    //     let session_status = self.poll_final_session_status(session_id).await.unwrap();
-    //     self.validate_session_status(&session_status).unwrap();
-    //     Ok(self.create_smart_id_authentication_response(&session_status))
-    // }
-
-    // pub async fn start_authentication_and_return_session_id(
-    //     &self,
-    // ) -> Result<String, Box<dyn std::error::Error>> {
-    //     let response = self.get_authentication_response().await.unwrap();
-    //     Ok(response.session_id)
-    // }
-
     fn create_auth_session_request(
         &self,
         auth_hash: AuthenticationHash,
@@ -113,44 +96,7 @@ impl<'a>  SmartIdClient<'a>  {
             network_interface,
             allowed_interactions_order,
         }
-
-        //     request.set_certificate_level(self.certificate_level.clone());
-        //     request.set_hash_type(self.get_hash_type());
-        //     request.set_hash(self.get_hash_in_base64().as_str());
-        //     if self.allowed_interactions_order.len() > 0 {
-        //         request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
-        //     } else {
-        //         request.set_allowed_interactions_order(vec![
-        //             Interaction::of_type_display_text_and_pin("Hello demo!".to_string()),
-        //         ]);
-        //     }
-        //     // request.set_allowed_interactions_order((*self.allowed_interactions_order).to_vec());
-        //     if self.nonce.is_some() {
-        //         request.set_nonce(self.nonce.clone().unwrap());
-        //     }
-        //     if !self.network_interface.is_empty() {
-        //         request.set_network_interface(self.network_interface.clone());
-        //     }
-        //     request
     }
-
-    // fn get_hash_type(&self) -> HashType {
-    //     if let Some(hash_type) = &self.authentication_hash {
-    //         return hash_type.hash_type.clone();
-    //     } else if let Some(data_to_sign) = &self.data_to_sign {
-    //         return data_to_sign.hash_type.clone();
-    //     }
-    //     HashType::Sha512
-    // }
-
-    // fn get_hash_in_base64(&self) -> String {
-    //     if let Some(authentication_hash) = &self.authentication_hash {
-    //         return authentication_hash.calculate_hash_in_base64();
-    //     } else if let Some(data_to_sign) = &self.data_to_sign {
-    //         return data_to_sign.calculate_hash_in_base64();
-    //     }
-    //     String::new()
-    // }
 
     pub async fn get_authentication_request_status(
         &self,
@@ -167,27 +113,7 @@ impl<'a>  SmartIdClient<'a>  {
         }
     }
 
-    // async fn get_authentication_response(
-    //     &self,
-    // ) -> Result<AuthenticationSessionResponse, SmartIdError> {
-    //     self.validate_auth_request_parameters()?;
-    //     if let Some(document_number) = &self.document_number {
-    //         Ok(self
-    //             .authenticate_with_document_number(document_number.to_string())
-    //             .await
-    //             .unwrap())
-    //     } else if let Some(semantics_identifier) = &self.semantics_identifier {
-    //         Ok(self
-    //             .authenticate_with_semantics_identifier(semantics_identifier)
-    //             .await
-    //             .unwrap())
-    //     } else {
-    //         Err(InvalidParametersException(
-    //             "Either document number or semantics identifier must be set".to_string(),
-    //         ))
-    //     }
-    // }
-
+    #[allow(dead_code)] // Method is unused
     fn validate_auth_request_parameters(&self) -> Result<(), SmartIdError> {
         if self.document_number.is_none() {
             return Err(InvalidParametersException(
@@ -200,41 +126,7 @@ impl<'a>  SmartIdClient<'a>  {
         Ok(())
     }
 
-    // fn create_smart_id_authentication_response(
-    //     &self,
-    //     session_status: &SessionStatus,
-    // ) -> SmartIdAuthenticationResponse {
-    //     let session_result = session_status.get_result().unwrap();
-    //     let session_signature = session_status.get_signature().unwrap();
-    //     let session_certificate = session_status.get_cert().unwrap();
-
-    //     let mut authentication_response = SmartIdAuthenticationResponse::new();
-    //     authentication_response.set_end_result(session_result.get_end_result());
-    //     authentication_response.set_ignored_properties(session_status.ignored_properties.clone());
-    //     authentication_response.set_signed_data(self.get_data_to_sign().to_string());
-    //     authentication_response.set_value_in_base64(session_signature.get_value().unwrap());
-    //     authentication_response.set_algorithm_name(session_signature.get_algorithm().unwrap());
-    //     authentication_response.set_certificate(session_certificate.get_value().unwrap());
-    //     authentication_response
-    //         .set_certificate_level(session_certificate.get_certificate_level().unwrap());
-    //     authentication_response
-    //         .set_interaction_flow_used(session_status.interaction_flow_used.clone());
-    //     authentication_response.set_state(session_status.get_state());
-    //     authentication_response.set_document_number(session_result.document_number.clone());
-    //     authentication_response
-    // }
-
-    // fn get_data_to_sign(&self) -> String {
-    //     if let Some(authentication_hash) = &self.authentication_hash {
-    //         authentication_hash.data_to_sign.clone()
-    //     } else if let Some(data_to_sign) = &self.data_to_sign {
-    //         data_to_sign.data_to_sign.clone()
-    //     } else {
-    //         String::new()
-    //     }
-    // }
-
-    /// Verifies that interactions order is set
+    #[allow(dead_code)] // Method is unused
     fn verify_interactions_if_set(&self) -> Result<(), SmartIdError> {
         let interactions_order = &self.allowed_interactions_order;
         if interactions_order.is_empty() {
@@ -250,24 +142,24 @@ impl<'a>  SmartIdClient<'a>  {
         &self,
         session_id: String,
     ) -> Result<SessionStatus, SmartIdError> {
-        let mut session_status: Option<SessionStatus> = None;
-        while session_status.is_none()
-            || (session_status.is_some() && session_status.as_ref().unwrap().is_running_state())
-        {
-            session_status = Some(
-                self.get_session_status(session_id.to_owned())
-                    .await
-                    .unwrap(),
-            );
-            if let Some(status) = &session_status {
-                if !status.is_running_state() {
-                    break;
-                }
+        let mut session_status_option: Option<SessionStatus> = None; // Renamed to avoid conflict
+        // Loop while session_status_option is None or the session is in a running state
+        while session_status_option.is_none() ||
+              (session_status_option.as_ref().map_or(false, |s| s.is_running_state())) {
+
+            let current_status = self.get_session_status(session_id.to_owned()).await?; // Use ? for error propagation
+
+            if !current_status.is_running_state() {
+                session_status_option = Some(current_status);
+                break;
             }
+            session_status_option = Some(current_status); // Store current status even if running, for next loop check
+
             let microseconds = cmp::min(self.polling_sleep_timeout_ms * 1000, u64::MAX);
             sleep(Duration::from_micros(microseconds));
         }
-        self.validate_session_status_result(session_status.unwrap())
+        // Unwrap is safe here because the loop condition ensures it's Some if we break
+        self.validate_session_status_result(session_status_option.unwrap())
     }
 
     /// Validates session status and returns it if it is valid
@@ -290,42 +182,37 @@ impl<'a>  SmartIdClient<'a>  {
         &self,
         session_status: SessionStatus,
     ) -> Result<SessionStatus, SmartIdError> {
-        if session_status.to_owned().is_running_state() {
+        if session_status.is_running_state() {
             return Err(SessionInProgress);
         }
 
-        let result = session_status.to_owned().get_result();
-        if result.is_none() {
+        let result_opt = session_status.get_result(); // Use getter if available, else direct access
+        if result_opt.is_none() {
             return Err(SessionStatusMissingResult);
         }
 
-        // let end_result = result.unwrap().get_end_result();
-        return if let Some(result) = session_status.to_owned().result {
-            match result.end_result {
-                SessionEndResultCode::UserRefused => Err(UserRefusedException),
-                SessionEndResultCode::Timeout => Err(SessionTimeoutException),
-                SessionEndResultCode::DocumentUnusable => Err(DocumentUnusableException),
-                SessionEndResultCode::RequiredInteractionNotSupportedByApp => {
-                    Err(RequiredInteractionNotSupportedByAppException)
-                }
-                SessionEndResultCode::UserRefusedDisplayTextAndPIN => {
-                    Err(UserRefusedDisplayTextAndPinException)
-                }
-                SessionEndResultCode::UserRefusedVCChoice => Err(UserRefusedVcChoiceException),
-                SessionEndResultCode::UserRefusedConfirmationMessage => {
-                    Err(UserRefusedConfirmationMessageException)
-                }
-                SessionEndResultCode::UserRefusedConfirmationMessageWithVCChoice => {
-                    Err(UserRefusedConfirmationMessageWithVcChoiceException)
-                }
-                SessionEndResultCode::UserRefusedCertChoice => Err(UserRefusedCertChoiceException),
-                SessionEndResultCode::WrongVC => Err(UserSelectedWrongVerificationCodeException),
-                SessionEndResultCode::Ok => Ok(session_status.to_owned()),
+        let result_data = result_opt.unwrap(); // Known to be Some now
+
+        match result_data.end_result {
+            SessionEndResultCode::UserRefused => Err(UserRefusedException),
+            SessionEndResultCode::Timeout => Err(SessionTimeoutException),
+            SessionEndResultCode::DocumentUnusable => Err(DocumentUnusableException),
+            SessionEndResultCode::RequiredInteractionNotSupportedByApp => {
+                Err(RequiredInteractionNotSupportedByAppException)
             }
-        } else {
-            Err(TechnicalError(
-                "Result is missing in the session status response".to_string(),
-            ))
+            SessionEndResultCode::UserRefusedDisplayTextAndPIN => {
+                Err(UserRefusedDisplayTextAndPinException)
+            }
+            SessionEndResultCode::UserRefusedVCChoice => Err(UserRefusedVcChoiceException),
+            SessionEndResultCode::UserRefusedConfirmationMessage => {
+                Err(UserRefusedConfirmationMessageException)
+            }
+            SessionEndResultCode::UserRefusedConfirmationMessageWithVCChoice => {
+                Err(UserRefusedConfirmationMessageWithVcChoiceException)
+            }
+            SessionEndResultCode::UserRefusedCertChoice => Err(UserRefusedCertChoiceException),
+            SessionEndResultCode::WrongVC => Err(UserSelectedWrongVerificationCodeException),
+            SessionEndResultCode::Ok => Ok(session_status),
         }
     }
 
@@ -339,7 +226,7 @@ impl<'a>  SmartIdClient<'a>  {
         network_interface: Option<String>,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         let request = self.create_auth_session_request(
-            self.authentication_hash.clone(),
+            self.authentication_hash.clone(), // Use client's main auth hash
             nonce,
             certificate_level,
             allowed_interactions_order,
@@ -357,14 +244,14 @@ impl<'a>  SmartIdClient<'a>  {
     pub async fn authenticate_with_semantics_identifier(
         &self,
         semantics_identifier: &SemanticsIdentifier,
-        auth_hash: AuthenticationHash,
+        auth_hash: AuthenticationHash, // Allow passing a specific hash for this auth method
         nonce: Option<String>,
         certificate_level: CertificateLevel,
         allowed_interactions_order: Vec<Interaction>,
         network_interface: Option<String>,
     ) -> Result<AuthenticationSessionResponse, SmartIdError> {
         let request = self.create_auth_session_request(
-            auth_hash,
+            auth_hash, // Use the provided auth_hash
             nonce,
             certificate_level,
             allowed_interactions_order,
@@ -382,39 +269,65 @@ impl<'a>  SmartIdClient<'a>  {
         &self,
         session_id: String,
     ) -> Result<SessionStatus, SmartIdError> {
-        let mut request = SessionStatusRequest::new(session_id);
-        let timeout = self.session_status_response_socket_timeout_ms;
-        request.set_session_status_response_socket_timeout_ms(timeout);
-        if !self.network_interface.is_empty() {
-            request.set_network_interface(self.network_interface.clone());
-        }
-        let session_status = self.get_session_status_request(request).await.unwrap();
-        self.validate_session_status_result(session_status.to_owned())
-            .unwrap();
-        Ok(session_status)
-    }
+        let mut request_params = Vec::new(); // Use Vec for query params
+        let timeout_str = self.session_status_response_socket_timeout_ms.to_string();
+        request_params.push(("timeoutMs", timeout_str.as_str()));
 
-    /// Gets the session status with the given request.
-    async fn get_session_status_request(
-        &self,
-        request: SessionStatusRequest,
-    ) -> Result<SessionStatus, Error> {
-        let url = format!(
+        // Add network_interface if it's not empty
+        // Note: The original Java client has a SessionStatusRequest object.
+        // Here, we are building the URL directly.
+        // The Java client adds networkInterface to the SessionStatusRequest if it's set for the client.
+        // However, the API spec for GET /session/{sessionId} usually takes query parameters.
+        // Let's assume timeoutMs is the primary one. If networkInterface is also a query param for GET,
+        // it should be added here. The provided code doesn't show it being added to GET.
+        // For now, only timeoutMs is added as a query param as per typical session status polling.
+
+        let mut url_string = format!(
             "{}/session/{}",
             self.host_url.trim_end_matches("/"),
-            request.session_id
+            session_id
         );
-        println!("Request URL: {}", url);
+
+        if !request_params.is_empty() {
+            url_string.push('?');
+            url_string.push_str(
+                &request_params
+                    .into_iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<String>>()
+                    .join("&")
+            );
+        }
+
+        println!("Request URL: {}", url_string);
         let response = self
             .build_http_client()
-            .get(url)
+            .get(&url_string) // Pass as &str
             .send()
-            .await?
-            .json::<SessionStatus>()
-            .await?;
-        println!("Response: {:?}", response);
-        Ok(response)
+            .await
+            .map_err(|e| TechnicalError(format!("Failed to send session status request: {}", e)))?;
+
+        let http_status_code = response.status();
+        let resp_text = response.text().await.map_err(|e| TechnicalError(format!("Failed to get session status response text: {}", e)))?;
+        println!("Response: {}", resp_text);
+
+        match http_status_code {
+            StatusCode::OK => {
+                let session_status: SessionStatus = serde_json::from_str(&resp_text)
+                    .map_err(|e| TechnicalError(format!("Failed to parse session status response: {}", e)))?;
+                // `validate_session_status_result` itself returns Result<SessionStatus, SmartIdError>
+                // so we return its result directly.
+                self.validate_session_status_result(session_status)
+            }
+            StatusCode::UNAUTHORIZED => Err(SmartIdUnauthorized),
+            StatusCode::SERVICE_UNAVAILABLE => Err(SmartIdServiceUnavailable),
+            _ => Err(TechnicalError(format!(
+                "Session status request failed with status {}: {}",
+                http_status_code, resp_text
+            ))),
+        }
     }
+
 
     /// Initiates a new authentication session with the given request.
     async fn post_authentication_request(
@@ -427,25 +340,34 @@ impl<'a>  SmartIdClient<'a>  {
             "Request Payload: {}",
             serde_json::to_string(&request).unwrap()
         );
-        let response = self.build_http_client().post(url).json(&request).send().await.unwrap();
+        let response = self.build_http_client().post(url).json(&request).send().await
+            .map_err(|e| TechnicalError(format!("Authentication POST request failed: {}", e)))?;
+
         let http_status_code = response.status();
-        let resp_text = response.text().await.unwrap();
+        let resp_text = response.text().await.map_err(|e| TechnicalError(format!("Failed to read authentication response text: {}", e)))?;
         println!("Response: {}", resp_text);
-        return match http_status_code {
+
+        match http_status_code {
             StatusCode::OK => {
-                Ok(serde_json::from_str::<AuthenticationSessionResponse>(&resp_text).unwrap())
+                serde_json::from_str::<AuthenticationSessionResponse>(&resp_text)
+                    .map_err(|e| TechnicalError(format!("Failed to parse authentication response: {}", e)))
             }
-            StatusCode::BAD_REQUEST | StatusCode::METHOD_NOT_ALLOWED => Err(TechnicalError(
-                serde_json::from_str::<SmartIdErrorResponse>(&resp_text)
-                    .unwrap()
-                    .message,
-            )),
+            StatusCode::BAD_REQUEST | StatusCode::METHOD_NOT_ALLOWED => {
+                // Try to parse as SmartIdErrorResponse, then fall back
+                let err_details = serde_json::from_str::<SmartIdErrorResponse>(&resp_text)
+                    .map(|e| e.message)
+                    .unwrap_or_else(|_| resp_text.clone());
+                Err(TechnicalError(err_details))
+            }
             StatusCode::UNAUTHORIZED => Err(SmartIdUnauthorized),
             StatusCode::SERVICE_UNAVAILABLE => Err(SmartIdServiceUnavailable),
             _ => Err(TechnicalError(format!(
                 "Response was '{}', status code was {}",
                 resp_text, http_status_code
             ))),
-        };
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;
