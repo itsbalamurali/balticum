@@ -24,6 +24,7 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 x509-certificate = "0.20"
 openssl = "0.10"
+pkcs11 = "0.5.0" # Added pkcs11 dependency
 sha2 = "0.10"
 rand = "0.8"
 hex = "0.4"
